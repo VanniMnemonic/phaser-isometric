@@ -2682,8 +2682,11 @@ Vite in library mode ne emette zero."
       fallire con un `import Phaser` temporaneo (Task 1 Step 6).
 - [ ] Le tre batterie di mutazione (proiezione 5, picking 4, culling 5) hanno prodotto il
       numero atteso di fallimenti, e ogni buco scoperto è stato colmato.
-- [ ] `packages/core` non contiene la stringa `phaser` in alcun sorgente, `package.json` o
-      `tsconfig.json`.
+- [ ] Nessun sorgente di `packages/core` **importa** Phaser né usa il namespace `Phaser.` —
+      verificato sull'AST, non sul testo. Nominare Phaser in un **commento** è legittimo e
+      atteso: spiegare *perché* non lo si usa è esattamente la nota che merita di stare lì. Il
+      divieto sulla stringa letterale vale invece per `package.json` e per i `tsconfig`, dove
+      una menzione significherebbe una dipendenza o un tipo ambientale.
 
 Il Piano 2 (guscio Phaser) parte da qui e consuma `Projection`, `DepthAssigner`, `pick`,
 `cullBounds`, `worldBounds` attraverso il barrel.
