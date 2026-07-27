@@ -557,12 +557,13 @@ verificabile da sola e nessuna dipende da una successiva.
 
 Le tappe 1-5 sono la v1. Le tappe 6-7 seguono, e la 7 **non può precedere la 3**.
 
-## 15. Punti aperti
+## 15. Punti chiusi
 
-- **Disponibilità del nome `phaser-isometric` su npm.** Da verificare prima della tappa 1, perché
-  il nome compare nell'exports map, nei sottopath e nella SKILL.md. Alternative in ordine:
-  `phaser4-isometric`, `phaser-iso-view`.
+- **Nome dei pacchetti — risolto (2026-07-27).** `phaser-isometric` e `phaser-isometric-mcp`
+  sono entrambi **liberi** su npm (registry: 404 su entrambi). Nomi confermati. Erano
+  bloccanti perché compaiono nell'exports map, nei sottopath e nella SKILL.md.
+- **Forma dell'output di `iso_scaffold` — risolto.** Restituisce **file** (percorso +
+  contenuto), non una patch: una patch richiederebbe di conoscere lo stato corrente del
+  progetto di destinazione, che l'MCP non ha e non deve avere.
 
-`iso_scaffold` restituisce **file** (percorso + contenuto), non una patch: una patch
-richiederebbe di conoscere lo stato corrente del progetto di destinazione, che l'MCP non ha e
-non deve avere.
+Nessun punto aperto residuo.
