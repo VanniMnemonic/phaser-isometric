@@ -2273,6 +2273,7 @@ Crea `packages/core/test/bounds.test.ts`:
 import { describe, it, expect } from 'vitest';
 import { createProjection } from '../src/projection';
 import { worldBounds, contentBounds } from '../src/bounds';
+import { IsoConfigError } from '../src/errors';
 
 const proj = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
 
@@ -2323,10 +2324,19 @@ describe('worldBounds', () => {
         expect(spostata.width).toBe(base.width);
     });
 
-    it('una griglia vuota ha bounds a dimensione zero', () => {
-        const b = worldBounds(proj, 0, 0);
-        expect(b.width).toBe(0);
-        expect(b.height).toBe(0);
+    it('una griglia vuota ha bounds a dimensione zero, all\'origine', () => {
+        expect(worldBounds(proj, 0, 0)).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+    });
+
+    it('rifiuta dimensioni o elevazione non finite', () => {
+        // NaN non e' ne' <= 0 ne' > 0: scivolerebbe oltre la guardia sulla
+        // dimensione. I quattro angoli diventerebbero tutti NaN, e in boundsOf i
+        // confronti con NaN sono sempre falsi: i punti sparirebbero dal min/max
+        // senza azzerare `almenoUno`, e il risultato sarebbe un Rect piccolo e
+        // sbagliato derivato dal solo angolo (0,0). Silenzioso, ed e' il peggio.
+        expect(() => worldBounds(proj, Number.NaN, 8)).toThrow(IsoConfigError);
+        expect(() => worldBounds(proj, 8, Number.POSITIVE_INFINITY)).toThrow(IsoConfigError);
+        expect(() => worldBounds(proj, 8, 8, { maxElevation: Number.NaN })).toThrow(IsoConfigError);
     });
 });
 
@@ -2376,6 +2386,7 @@ Atteso: **FAIL** — `Failed to resolve import "../src/bounds"`.
 Crea `packages/core/src/bounds.ts`:
 
 ```ts
+import { IsoConfigError } from './errors';
 import type { Projection } from './projection';
 import type { Cell, Point, Rect } from './types';
 
@@ -2418,6 +2429,29 @@ export function worldBounds(
     gridHeight: number,
     opts: { maxElevation?: number } = {}
 ): Rect {
+    // Validare la finitezza PRIMA della guardia su <= 0, perche' NaN non e' ne'
+    // <= 0 ne' > 0: scivolerebbe oltre. Con gridWidth = NaN i quattro angoli
+    // proiettati diventano tutti {x:NaN,y:NaN}, e in boundsOf i confronti
+    // `NaN < minX` e `NaN > maxX` sono entrambi falsi — i punti sparirebbero dal
+    // min/max senza azzerare `almenoUno`. Il risultato sarebbe un Rect piccolo e
+    // sbagliato, derivato dal solo angolo (0,0) che e' sempre finito: per
+    // camera.setBounds, un clamp minuscolo senza alcun segnale.
+    //
+    // Non e' un percorso caldo: worldBounds si chiama a ogni cambio di livello,
+    // non a ogni frame. Lanciare qui e' la stessa disciplina di createProjection.
+    for (const [name, value] of [
+        ['gridWidth', gridWidth],
+        ['gridHeight', gridHeight],
+        ['maxElevation', opts.maxElevation ?? 0]
+    ] as const) {
+        if (!Number.isFinite(value)) {
+            throw new IsoConfigError(
+                `${name} non e' un numero finito (vale ${String(value)})`,
+                `passa un numero finito per ${name}`
+            );
+        }
+    }
+
     if (gridWidth <= 0 || gridHeight <= 0) {
         return { x: 0, y: 0, width: 0, height: 0 };
     }
@@ -2430,6 +2464,9 @@ export function worldBounds(
         for (const p of projection.cornersOf(gx, gy, 0)) points.push(p);
     }
 
+    // Il cast e' sound SOLO grazie ai due controlli sopra: dimensioni finite e
+    // > 0 garantiscono 16 punti finiti, quindi boundsOf non puo' restituire null.
+    // Se una futura modifica tocca quelle guardie, questo cast va rivisto.
     const base = boundsOf(points) as Rect;
     const lift = (opts.maxElevation ?? 0) * projection.elevationStep;
     return { x: base.x, y: base.y - lift, width: base.width, height: base.height + lift };
@@ -2457,7 +2494,7 @@ pnpm vitest run packages/core/test/bounds.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 10 test; typecheck exit 0.
+Atteso: **PASS**, 11 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -2617,7 +2654,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Atteso: **PASS** su tutti e 9 i file di test (85 casi); typecheck exit 0.
+Atteso: **PASS** su tutti e 9 i file di test (86 casi); typecheck exit 0.
 
 > Non incanalare mai questi comandi in `tail`, `head` o `grep` prima di un commit: un pipeline
 > restituisce l'exit code dell'ULTIMO comando, quindi `pnpm test | tail -5 && git commit`
@@ -2638,7 +2675,7 @@ Vite in library mode ne emette zero."
 
 ## Definition of Done — Piano 1
 
-- [ ] `pnpm test` verde: 9 file di test, 85 casi.
+- [ ] `pnpm test` verde: 9 file di test, 86 casi.
 - [ ] `pnpm typecheck` exit 0.
 - [ ] `pnpm build:types` produce 9 file `.d.ts`.
 - [ ] Le tre guardie architetturali passano, **e** la guardia sugli import è stata vista
