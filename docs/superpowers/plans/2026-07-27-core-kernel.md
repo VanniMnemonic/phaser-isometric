@@ -1478,7 +1478,7 @@ pnpm vitest run packages/core/test/depth.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 14 test; typecheck exit 0.
+Atteso: **PASS**, 13 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
