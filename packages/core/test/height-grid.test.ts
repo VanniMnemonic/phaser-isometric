@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createHeightGrid } from '../src/height-grid';
+import { IsoConfigError } from '../src/errors';
 
 describe('createHeightGrid', () => {
     it('riempie di quota 0 per default', () => {
@@ -60,5 +61,20 @@ describe('createHeightGrid', () => {
         const g = createHeightGrid(2, 2);
         expect(() => g.setHeight(9, 9, 3)).not.toThrow();
         expect(g.maxElevation).toBe(0);
+    });
+
+    it('rifiuta alla costruzione dimensioni non intere o negative', () => {
+        // Con width = 2.5, `inside()` accetterebbe (0,1) perche' 1 <= 2.5, ma
+        // l'indice calcolato sarebbe 2.5: `cells[2.5]` legge `undefined`, quindi
+        // heightAt violerebbe il contratto `number | null` e setHeight perderebbe
+        // la scrittura senza alcun segnale.
+        expect(() => createHeightGrid(2.5, 2)).toThrow(IsoConfigError);
+        expect(() => createHeightGrid(2, -1)).toThrow(IsoConfigError);
+        expect(() => createHeightGrid(Number.NaN, 2)).toThrow(IsoConfigError);
+    });
+
+    it('una griglia di dimensione zero e\' lecita e non ha celle', () => {
+        const g = createHeightGrid(0, 0);
+        expect(g.heightAt(0, 0)).toBeNull();
     });
 });

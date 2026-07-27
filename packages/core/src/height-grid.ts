@@ -1,3 +1,4 @@
+import { IsoConfigError } from './errors';
 import type { HeightSource } from './types';
 
 export interface HeightGrid extends HeightSource {
@@ -23,7 +24,22 @@ const ABYSS = Number.NEGATIVE_INFINITY;
  * nessun boxing, e il confronto con una quota reale e' sempre falso.
  */
 export function createHeightGrid(width: number, height: number, fill: number | null = 0): HeightGrid {
-    const cells = new Float64Array(Math.max(0, width * height));
+    // Validare alla costruzione, come createProjection e createDepthAssigner.
+    // Con una dimensione frazionaria `inside()` accetterebbe una cella il cui
+    // indice calcolato e' frazionario: `cells[2.5]` legge `undefined`, quindi
+    // `heightAt` violerebbe il proprio contratto `number | null` e `setHeight`
+    // perderebbe la scrittura in silenzio — un undefined che si propaga fino al
+    // picking, dove diventa difficile da diagnosticare.
+    for (const [name, value] of [['width', width], ['height', height]] as const) {
+        if (!Number.isInteger(value) || value < 0) {
+            throw new IsoConfigError(
+                `${name} deve essere un intero non negativo (vale ${String(value)})`,
+                `passa un intero >= 0 per ${name}`
+            );
+        }
+    }
+
+    const cells = new Float64Array(width * height);
     cells.fill(fill === null ? ABYSS : fill);
 
     let maxElevation = fill === null ? 0 : fill;
