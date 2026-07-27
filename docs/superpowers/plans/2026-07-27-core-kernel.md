@@ -537,6 +537,20 @@ export interface GridRect { minX: number; maxX: number; minY: number; maxY: numb
  */
 export interface HeightSource {
     heightAt(gx: number, gy: number): number | null;
+
+    /**
+     * Capability OPZIONALE: un limite superiore alle quote presenti.
+     *
+     * Se la sorgente la espone, `pick` la usa come default per sapere fino a che
+     * quota risalire. Se NON la espone, chi chiama `pick` DEVE passare
+     * `opts.maxElevation`, altrimenti il default e' 0 e il picking sonda solo il
+     * pavimento: tutto cio' che e' elevato diventa impescabile, in silenzio.
+     *
+     * E' dichiarata qui, e non letta con un cast strutturale, proprio perche' chi
+     * implementa la propria sorgente la veda nell'interfaccia invece di scoprirla
+     * da un risultato sbagliato.
+     */
+    readonly maxElevation?: number;
 }
 
 /** Come si costruisce una proiezione. Entrambe le forme producono la stessa matrice. */
@@ -1739,6 +1753,7 @@ import { describe, it, expect } from 'vitest';
 import { createProjection } from '../src/projection';
 import { createHeightGrid } from '../src/height-grid';
 import { pick } from '../src/picking';
+import type { HeightSource } from '../src/types';
 
 const proj = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
 
@@ -1837,6 +1852,19 @@ describe('pick con elevazione', () => {
         const s = proj.project(1, 1, 6);
         expect(pick(proj, s.x, s.y, g)).toEqual({ gx: 1, gy: 1, z: 6 });
     });
+
+    it('una sorgente che non dichiara maxElevation sonda solo il pavimento', () => {
+        // La capability e' opzionale, e la sua assenza ha una conseguenza
+        // DOCUMENTATA invece che una sorpresa: senza il campo e senza
+        // opts.maxElevation il limite e' 0, quindi tutto cio' che e' elevato e'
+        // impescabile. Passando il limite esplicitamente, si ritrova.
+        const g = createHeightGrid(8, 8, 0);
+        g.setHeight(1, 1, 4);
+        const nuda: HeightSource = { heightAt: (gx, gy) => g.heightAt(gx, gy) };
+        const s = proj.project(1, 1, 4);
+        expect(pick(proj, s.x, s.y, nuda)).toBeNull();
+        expect(pick(proj, s.x, s.y, nuda, { maxElevation: 4 })).toEqual({ gx: 1, gy: 1, z: 4 });
+    });
 });
 ```
 
@@ -1890,8 +1918,11 @@ export function pick(
     heights: HeightSource,
     opts: PickOptions = {}
 ): Cell | null {
-    const dichiarata = (heights as { maxElevation?: number }).maxElevation;
-    const maxElevation = opts.maxElevation ?? (typeof dichiarata === 'number' ? dichiarata : 0);
+    // `maxElevation` e' una capability dichiarata su HeightSource, non un campo
+    // annusato con un cast: chi implementa la propria sorgente la vede nel tipo.
+    // Se manca e il chiamante non passa `opts.maxElevation`, il default e' 0 e si
+    // sonda solo il pavimento — comportamento documentato, non una sorpresa.
+    const maxElevation = opts.maxElevation ?? heights.maxElevation ?? 0;
 
     const scratch: Point = { x: 0, y: 0 };
 
@@ -1915,7 +1946,7 @@ pnpm vitest run packages/core/test/picking.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 11 test; typecheck exit 0.
+Atteso: **PASS**, 12 test; typecheck exit 0.
 
 - [ ] **Step 5: Batteria di mutazione**
 
@@ -2586,7 +2617,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Atteso: **PASS** su tutti e 9 i file di test (84 casi); typecheck exit 0.
+Atteso: **PASS** su tutti e 9 i file di test (85 casi); typecheck exit 0.
 
 > Non incanalare mai questi comandi in `tail`, `head` o `grep` prima di un commit: un pipeline
 > restituisce l'exit code dell'ULTIMO comando, quindi `pnpm test | tail -5 && git commit`
@@ -2607,7 +2638,7 @@ Vite in library mode ne emette zero."
 
 ## Definition of Done — Piano 1
 
-- [ ] `pnpm test` verde: 9 file di test, 84 casi.
+- [ ] `pnpm test` verde: 9 file di test, 85 casi.
 - [ ] `pnpm typecheck` exit 0.
 - [ ] `pnpm build:types` produce 9 file `.d.ts`.
 - [ ] Le tre guardie architetturali passano, **e** la guardia sugli import è stata vista
