@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createProjection } from '../src/projection';
 import { worldBounds, contentBounds } from '../src/bounds';
+import { IsoConfigError } from '../src/errors';
 
 const proj = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
 
@@ -51,10 +52,19 @@ describe('worldBounds', () => {
         expect(spostata.width).toBe(base.width);
     });
 
-    it('una griglia vuota ha bounds a dimensione zero', () => {
-        const b = worldBounds(proj, 0, 0);
-        expect(b.width).toBe(0);
-        expect(b.height).toBe(0);
+    it('una griglia vuota ha bounds a dimensione zero, all\'origine', () => {
+        expect(worldBounds(proj, 0, 0)).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+    });
+
+    it('rifiuta dimensioni o elevazione non finite', () => {
+        // NaN non e' ne' <= 0 ne' > 0: scivolerebbe oltre la guardia sulla
+        // dimensione. I quattro angoli diventerebbero tutti NaN, e in boundsOf i
+        // confronti con NaN sono sempre falsi: i punti sparirebbero dal min/max
+        // senza azzerare `almenoUno`, e il risultato sarebbe un Rect piccolo e
+        // sbagliato derivato dal solo angolo (0,0). Silenzioso, ed e' il peggio.
+        expect(() => worldBounds(proj, Number.NaN, 8)).toThrow(IsoConfigError);
+        expect(() => worldBounds(proj, 8, Number.POSITIVE_INFINITY)).toThrow(IsoConfigError);
+        expect(() => worldBounds(proj, 8, 8, { maxElevation: Number.NaN })).toThrow(IsoConfigError);
     });
 });
 
