@@ -1522,6 +1522,7 @@ Crea `packages/core/test/height-grid.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { createHeightGrid } from '../src/height-grid';
+import { IsoConfigError } from '../src/errors';
 
 describe('createHeightGrid', () => {
     it('riempie di quota 0 per default', () => {
@@ -1583,6 +1584,21 @@ describe('createHeightGrid', () => {
         expect(() => g.setHeight(9, 9, 3)).not.toThrow();
         expect(g.maxElevation).toBe(0);
     });
+
+    it('rifiuta alla costruzione dimensioni non intere o negative', () => {
+        // Con width = 2.5, `inside()` accetterebbe (0,1) perche' 1 <= 2.5, ma
+        // l'indice calcolato sarebbe 2.5: `cells[2.5]` legge `undefined`, quindi
+        // heightAt violerebbe il contratto `number | null` e setHeight perderebbe
+        // la scrittura senza alcun segnale.
+        expect(() => createHeightGrid(2.5, 2)).toThrow(IsoConfigError);
+        expect(() => createHeightGrid(2, -1)).toThrow(IsoConfigError);
+        expect(() => createHeightGrid(Number.NaN, 2)).toThrow(IsoConfigError);
+    });
+
+    it('una griglia di dimensione zero e\' lecita e non ha celle', () => {
+        const g = createHeightGrid(0, 0);
+        expect(g.heightAt(0, 0)).toBeNull();
+    });
 });
 ```
 
@@ -1599,6 +1615,7 @@ Atteso: **FAIL** — `Failed to resolve import "../src/height-grid"`.
 Crea `packages/core/src/height-grid.ts`:
 
 ```ts
+import { IsoConfigError } from './errors';
 import type { HeightSource } from './types';
 
 export interface HeightGrid extends HeightSource {
@@ -1624,7 +1641,22 @@ const ABYSS = Number.NEGATIVE_INFINITY;
  * nessun boxing, e il confronto con una quota reale e' sempre falso.
  */
 export function createHeightGrid(width: number, height: number, fill: number | null = 0): HeightGrid {
-    const cells = new Float64Array(Math.max(0, width * height));
+    // Validare alla costruzione, come createProjection e createDepthAssigner.
+    // Con una dimensione frazionaria `inside()` accetterebbe una cella il cui
+    // indice calcolato e' frazionario: `cells[2.5]` legge `undefined`, quindi
+    // `heightAt` violerebbe il proprio contratto `number | null` e `setHeight`
+    // perderebbe la scrittura in silenzio — un undefined che si propaga fino al
+    // picking, dove diventa difficile da diagnosticare.
+    for (const [name, value] of [['width', width], ['height', height]] as const) {
+        if (!Number.isInteger(value) || value < 0) {
+            throw new IsoConfigError(
+                `${name} deve essere un intero non negativo (vale ${String(value)})`,
+                `passa un intero >= 0 per ${name}`
+            );
+        }
+    }
+
+    const cells = new Float64Array(width * height);
     cells.fill(fill === null ? ABYSS : fill);
 
     let maxElevation = fill === null ? 0 : fill;
@@ -1661,7 +1693,7 @@ pnpm vitest run packages/core/test/height-grid.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 8 test; typecheck exit 0.
+Atteso: **PASS**, 10 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -2554,7 +2586,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Atteso: **PASS** su tutti e 9 i file di test (82 casi); typecheck exit 0.
+Atteso: **PASS** su tutti e 9 i file di test (84 casi); typecheck exit 0.
 
 > Non incanalare mai questi comandi in `tail`, `head` o `grep` prima di un commit: un pipeline
 > restituisce l'exit code dell'ULTIMO comando, quindi `pnpm test | tail -5 && git commit`
@@ -2575,7 +2607,7 @@ Vite in library mode ne emette zero."
 
 ## Definition of Done — Piano 1
 
-- [ ] `pnpm test` verde: 9 file di test, 82 casi.
+- [ ] `pnpm test` verde: 9 file di test, 84 casi.
 - [ ] `pnpm typecheck` exit 0.
 - [ ] `pnpm build:types` produce 9 file `.d.ts`.
 - [ ] Le tre guardie architetturali passano, **e** la guardia sugli import è stata vista
