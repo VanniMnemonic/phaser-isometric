@@ -140,7 +140,8 @@ valido.
 
 **Files:**
 - Create: `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `vitest.config.ts`
-- Create: `packages/core/package.json`, `packages/core/tsconfig.json`, `packages/core/src/index.ts`
+- Create: `packages/core/package.json`, `packages/core/tsconfig.json`,
+  `packages/core/tsconfig.test.json`, `packages/core/src/index.ts`
 - Test: `packages/core/test/purity.test.ts`
 
 **Interfaces:**
@@ -165,7 +166,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, '../src');
 const PKG = resolve(HERE, '../package.json');
-const TSCONFIG = resolve(HERE, '../tsconfig.json');
+const TSCONFIGS = [resolve(HERE, '../tsconfig.json'), resolve(HERE, '../tsconfig.test.json')];
 
 function collect(dir: string): string[] {
     let out: string[] = [];
@@ -244,8 +245,10 @@ describe('vincolo architetturale: il core e\' puro', () => {
         expect(/phaser/i.test(readFileSync(PKG, 'utf8')), 'packages/core/package.json nomina phaser').toBe(false);
     });
 
-    it('il tsconfig del core non include i tipi di phaser', () => {
-        expect(/phaser/i.test(readFileSync(TSCONFIG, 'utf8')), 'packages/core/tsconfig.json nomina phaser').toBe(false);
+    it('nessun tsconfig del core include i tipi di phaser', () => {
+        for (const path of TSCONFIGS) {
+            expect(/phaser/i.test(readFileSync(path, 'utf8')), `${path} nomina phaser`).toBe(false);
+        }
     });
 });
 ```
@@ -272,7 +275,7 @@ Atteso: **FAIL**. `packages/core/src` non esiste ancora — `collect()` lancia `
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json",
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.test.json",
     "build:types": "tsc --emitDeclarationOnly -p packages/core/tsconfig.json"
   },
   "devDependencies": {
@@ -367,6 +370,26 @@ export default defineConfig({
 > `types: ["node"]` è restrittivo di proposito: senza, TypeScript includerebbe **ogni**
 > pacchetto `@types/*` visibile, e i tipi globali di Phaser potrebbero entrare senza un import.
 > Elencarli esplicitamente chiude quella porta.
+
+`packages/core/tsconfig.test.json`:
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false
+  },
+  "include": ["src", "test"]
+}
+```
+
+> Serve un **secondo** tsconfig perché quello di build ha `include: ["src"]` e `rootDir: "src"`:
+> senza, `tsc --noEmit` non guarderebbe mai i file di test, che invece contengono codice a
+> livello di tipi (tuple, `Parameters<typeof …>`, cast). E `vitest` **non typechecka**, quindi
+> quegli errori non li vedrebbe nessuno. Il tsconfig di build resta puro per l'emissione dei
+> `.d.ts`; questo copre `src` **e** `test` e non emette nulla.
 
 `packages/core/src/index.ts`:
 
