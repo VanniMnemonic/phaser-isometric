@@ -1,0 +1,8 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.DS_Store
+
+# Plan file di continuità: locale, mai committato
+.claude/plan.md
