@@ -111,3 +111,100 @@ describe('project', () => {
         expect(t.project(0, 0, 0)).toEqual({ x: 400, y: 300 });
     });
 });
+
+describe('unproject', () => {
+    it('inverte esattamente il preset diamond', () => {
+        const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+        const s = p.project(3, 5, 0);
+        const g = p.unproject(s.x, s.y, 0);
+        expect(g.x).toBeCloseTo(3, 12);
+        expect(g.y).toBeCloseTo(5, 12);
+    });
+
+    it('inverte tenendo conto della quota', () => {
+        const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+        const s = p.project(2, 7, 4);
+        const g = p.unproject(s.x, s.y, 4);
+        expect(g.x).toBeCloseTo(2, 12);
+        expect(g.y).toBeCloseTo(7, 12);
+    });
+
+    it('inverte tenendo conto dell\'origine', () => {
+        const p = createProjection(
+            { type: 'diamond', tileWidth: 96, tileHeight: 48 },
+            { origin: { x: 400, y: 300 } }
+        );
+        const s = p.project(6, 1, 2);
+        const g = p.unproject(s.x, s.y, 2);
+        expect(g.x).toBeCloseTo(6, 12);
+        expect(g.y).toBeCloseTo(1, 12);
+    });
+
+    it('round-trip esatto su tutta una griglia, per ogni configurazione', () => {
+        const specs: ReadonlyArray<Parameters<typeof createProjection>[0]> = [
+            { type: 'diamond', tileWidth: 96, tileHeight: 48 },
+            { type: 'diamond', tileWidth: 64, tileHeight: 64 },
+            { type: 'diamond', tileWidth: 128, tileHeight: 32, elevationStep: 16 },
+            { type: 'matrix', a: 40, b: 20, c: -30, d: 25, elevationStep: 12 }
+        ];
+        for (const spec of specs) {
+            const p = createProjection(spec, { origin: { x: 7, y: -13 } });
+            for (let gx = -8; gx <= 8; gx++) {
+                for (let gy = -8; gy <= 8; gy++) {
+                    for (let z = 0; z <= 3; z++) {
+                        const s = p.project(gx, gy, z);
+                        const g = p.unproject(s.x, s.y, z);
+                        expect(Math.round(g.x)).toBe(gx);
+                        expect(Math.round(g.y)).toBe(gy);
+                        expect(g.x).toBeCloseTo(gx, 9);
+                        expect(g.y).toBeCloseTo(gy, 9);
+                    }
+                }
+            }
+        }
+    });
+
+    it('arrotondare l\'inverso identifica ESATTAMENTE il rombo della cella', () => {
+        // La rivendicazione forte della convenzione del centro. I punti interni
+        // al rombo di (0,0) tornano (0,0); un punto appena oltre un vertice, o
+        // oltre uno spigolo, no.
+        const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+        const dentro = [
+            { x: 0, y: 0 }, { x: 47, y: 0 }, { x: -47, y: 0 },
+            { x: 0, y: 23 }, { x: 0, y: -23 }
+        ];
+        for (const pt of dentro) {
+            const g = p.unproject(pt.x, pt.y, 0);
+            // '===' (non 'toEqual') di proposito: alcuni di questi punti producono un
+            // -0 legittimo in una coordinata (es. round(-0.4895...) === -0 in JS), che
+            // e' matematicamente 0 ma fallirebbe un confronto per uguaglianza profonda
+            // come 'toEqual([0, 0])', il quale distingue -0 da +0. '===' tratta -0 e 0
+            // come uguali, che e' la semantica corretta qui.
+            expect(
+                Math.round(g.x) === 0 && Math.round(g.y) === 0,
+                `${pt.x},${pt.y} dovrebbe cadere dentro la cella (0,0)`
+            ).toBe(true);
+        }
+        const fuori = [
+            { x: 49, y: 0 },     // oltre il vertice destro
+            { x: 0, y: 25 },     // oltre il vertice inferiore
+            { x: 25, y: 13 }     // oltre lo spigolo in basso a destra
+        ];
+        for (const pt of fuori) {
+            const g = p.unproject(pt.x, pt.y, 0);
+            expect(
+                Math.round(g.x) === 0 && Math.round(g.y) === 0,
+                `${pt.x},${pt.y} dovrebbe cadere fuori dalla cella (0,0)`
+            ).toBe(false);
+        }
+    });
+
+    it('unprojectInto scrive nel target e lo restituisce', () => {
+        const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+        const out = { x: 0, y: 0 };
+        const r = p.unprojectInto(out, 48, 24, 0);
+        expect(r).toBe(out);
+        expect(out.x).toBeCloseTo(1, 12);
+        expect(out.y).toBeCloseTo(0, 12);
+    });
+});

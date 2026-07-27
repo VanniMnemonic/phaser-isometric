@@ -24,6 +24,8 @@ export interface Projection {
 
     project(gx: number, gy: number, z?: number): Point;
     projectInto(out: Point, gx: number, gy: number, z?: number): Point;
+    unproject(sx: number, sy: number, z?: number): Point;
+    unprojectInto(out: Point, sx: number, sy: number, z?: number): Point;
 }
 
 function requireFinite(value: number, name: string): void {
@@ -105,12 +107,31 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         return out;
     }
 
+    /**
+     * L'inverso analitico della matrice 2x2. Con X = sx - ox e Y = sy - oy + z*e:
+     *   gx = ( d*X - c*Y) / det
+     *   gy = (-b*X + a*Y) / det
+     * Sul preset diamond si riduce a gx = X/tw + Y/th, gy = -X/tw + Y/th, che
+     * sostituito nella forma diretta da' l'identita' esatta.
+     */
+    function unprojectInto(out: Point, sx: number, sy: number, z = 0): Point {
+        const X = sx - origin.x;
+        const Y = sy - origin.y + z * elevationStep;
+        out.x = (d * X - c * Y) / det;
+        out.y = (-b * X + a * Y) / det;
+        return out;
+    }
+
     return Object.freeze({
         a, b, c, d, det, elevationStep,
         origin,
         project(gx: number, gy: number, z = 0): Point {
             return projectInto({ x: 0, y: 0 }, gx, gy, z);
         },
-        projectInto
+        projectInto,
+        unproject(sx: number, sy: number, z = 0): Point {
+            return unprojectInto({ x: 0, y: 0 }, sx, sy, z);
+        },
+        unprojectInto
     });
 }
