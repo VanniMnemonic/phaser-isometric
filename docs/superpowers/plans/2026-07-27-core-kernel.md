@@ -24,6 +24,7 @@ Ogni task eredita implicitamente questi vincoli.
 - **Import relativi SENZA estensione** (`from './types'`, non `'./types.js'`). È `moduleResolution: "bundler"`, ed è la convenzione del progetto di riferimento dell'utente: 263 import estensionless, zero con `.js`.
 - **`lib: ES2020`** — vietati `Array.prototype.at()` (TS2550), `String.replaceAll`, `Object.groupBy`. Vincolo dei progetti consumatori dell'utente.
 - **`vitest` NON typechecka** (esbuild strippa i tipi senza controllarli). `pnpm typecheck` (`tsc --noEmit`) è uno step separato, **mai dietro una pipe** — un pipe restituisce l'exit code dell'ultimo comando, quindi `pnpm test | tail -5 && git commit` committa anche con i test rossi.
+- **`-0` non è `0` per `toEqual` e `toBe`.** `Math.round(-0.4896)` vale `-0`, e i matcher di uguaglianza profonda di Vitest lo distinguono da `+0`. Ovunque si confronti il risultato di un arrotondamento con zero, usare `===` (che li equipara) e non `toEqual`. Vale per ogni test di questo piano che arrotonda una coordinata verso la cella `(0,0)`.
 - **`useDefineForClassFields: false`** in `tsconfig.base.json`. Nel core non cambia nulla, ma il guscio sottoclasserà GameObject di Phaser, dove un class field che collide con un accessor di prototype emette `defineProperty` e **shadowa il setter**. Il progetto di riferimento ha `true`: è esattamente la trappola da non ereditare.
 - **Convenzione di origine, unica e non negoziabile:** `project(gx, gy, z)` restituisce il **centro della faccia superiore** della cella. Ogni funzione del core la assume.
 - **Nessuna dipendenza runtime** in `packages/core`. Solo `devDependencies` alla radice.
@@ -965,7 +966,16 @@ describe('unproject', () => {
         ];
         for (const pt of dentro) {
             const g = p.unproject(pt.x, pt.y, 0);
-            expect([Math.round(g.x), Math.round(g.y)], `${pt.x},${pt.y}`).toEqual([0, 0]);
+            // `===`, non `toEqual`, di proposito: alcuni di questi punti producono
+            // un -0 legittimo in una coordinata — `Math.round(-0.4896)` vale `-0` —
+            // che e' matematicamente zero ma fa fallire un confronto per uguaglianza
+            // profonda, perche' `toEqual` distingue -0 da +0. `===` li tratta come
+            // uguali, che e' la semantica corretta qui, ed e' anche quella che il
+            // ramo `fuori` usa gia'.
+            expect(
+                Math.round(g.x) === 0 && Math.round(g.y) === 0,
+                `${pt.x},${pt.y} dovrebbe cadere dentro la cella (0,0)`
+            ).toBe(true);
         }
         const fuori = [
             { x: 49, y: 0 },     // oltre il vertice destro
