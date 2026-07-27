@@ -26,6 +26,7 @@ export interface Projection {
     projectInto(out: Point, gx: number, gy: number, z?: number): Point;
     unproject(sx: number, sy: number, z?: number): Point;
     unprojectInto(out: Point, sx: number, sy: number, z?: number): Point;
+    cornersOf(gx: number, gy: number, z?: number): [Point, Point, Point, Point];
 }
 
 function requireFinite(value: number, name: string): void {
@@ -122,6 +123,30 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         return out;
     }
 
+    /**
+     * I quattro vertici della faccia superiore, in ordine ORARIO dall'alto:
+     * top, right, bottom, left.
+     *
+     * Gli scostamenti dal centro, in spazio griglia, sono (∓0.5, ∓0.5); passati
+     * per la matrice diventano i quattro scostamenti schermo qui sotto. Sul
+     * preset diamond danno (0,-th/2), (tw/2,0), (0,th/2), (-tw/2,0).
+     *
+     * Esiste perche' GetTileCorners di Phaser e' NOOP per ISOMETRIC.
+     */
+    const halfSum = { x: (a + c) / 2, y: (b + d) / 2 };
+    const halfDiff = { x: (a - c) / 2, y: (b - d) / 2 };
+
+    function cornersOf(gx: number, gy: number, z = 0): [Point, Point, Point, Point] {
+        const cx = a * gx + c * gy + origin.x;
+        const cy = b * gx + d * gy - z * elevationStep + origin.y;
+        return [
+            { x: cx - halfSum.x, y: cy - halfSum.y },
+            { x: cx + halfDiff.x, y: cy + halfDiff.y },
+            { x: cx + halfSum.x, y: cy + halfSum.y },
+            { x: cx - halfDiff.x, y: cy - halfDiff.y }
+        ];
+    }
+
     return Object.freeze({
         a, b, c, d, det, elevationStep,
         origin,
@@ -132,6 +157,7 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         unproject(sx: number, sy: number, z = 0): Point {
             return unprojectInto({ x: 0, y: 0 }, sx, sy, z);
         },
-        unprojectInto
+        unprojectInto,
+        cornersOf
     });
 }

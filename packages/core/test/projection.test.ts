@@ -208,3 +208,45 @@ describe('unproject', () => {
         expect(out.y).toBeCloseTo(0, 12);
     });
 });
+
+describe('cornersOf', () => {
+    const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+
+    it('restituisce i quattro vertici in ordine orario dall\'alto', () => {
+        const [top, right, bottom, left] = p.cornersOf(0, 0, 0);
+        expect(top).toEqual({ x: 0, y: -24 });
+        expect(right).toEqual({ x: 48, y: 0 });
+        expect(bottom).toEqual({ x: 0, y: 24 });
+        expect(left).toEqual({ x: -48, y: 0 });
+    });
+
+    it('i vertici sono centrati sul punto proiettato', () => {
+        const c = p.project(4, 2, 1);
+        const corners = p.cornersOf(4, 2, 1);
+        const meanX = corners.reduce((s, q) => s + q.x, 0) / 4;
+        const meanY = corners.reduce((s, q) => s + q.y, 0) / 4;
+        expect(meanX).toBeCloseTo(c.x, 12);
+        expect(meanY).toBeCloseTo(c.y, 12);
+    });
+
+    it('ogni vertice sta sul bordo del rombo della propria cella', () => {
+        // Tirando ogni vertice di un epsilon verso il centro, l'inverso
+        // arrotondato deve dare la cella di partenza.
+        const c = p.project(3, 6, 2);
+        for (const corner of p.cornersOf(3, 6, 2)) {
+            const inx = corner.x + (c.x - corner.x) * 0.02;
+            const iny = corner.y + (c.y - corner.y) * 0.02;
+            const g = p.unproject(inx, iny, 2);
+            expect([Math.round(g.x), Math.round(g.y)]).toEqual([3, 6]);
+        }
+    });
+
+    it('funziona su una matrice arbitraria', () => {
+        const m = createProjection({ type: 'matrix', a: 40, b: 20, c: -30, d: 25 });
+        const [top, right, bottom, left] = m.cornersOf(0, 0, 0);
+        expect(top).toEqual({ x: -(40 - 30) / 2, y: -(20 + 25) / 2 });
+        expect(right).toEqual({ x: (40 + 30) / 2, y: (20 - 25) / 2 });
+        expect(bottom).toEqual({ x: (40 - 30) / 2, y: (20 + 25) / 2 });
+        expect(left).toEqual({ x: -(40 + 30) / 2, y: -(20 - 25) / 2 });
+    });
+});
