@@ -35,8 +35,11 @@ export function pick(
     heights: HeightSource,
     opts: PickOptions = {}
 ): Cell | null {
-    const dichiarata = (heights as { maxElevation?: number }).maxElevation;
-    const maxElevation = opts.maxElevation ?? (typeof dichiarata === 'number' ? dichiarata : 0);
+    // `maxElevation` e' una capability dichiarata su HeightSource, non un campo
+    // annusato con un cast: chi implementa la propria sorgente la vede nel tipo.
+    // Se manca e il chiamante non passa `opts.maxElevation`, il default e' 0 e si
+    // sonda solo il pavimento — comportamento documentato, non una sorpresa.
+    const maxElevation = opts.maxElevation ?? heights.maxElevation ?? 0;
 
     const scratch: Point = { x: 0, y: 0 };
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createProjection } from '../src/projection';
 import { createHeightGrid } from '../src/height-grid';
 import { pick } from '../src/picking';
+import type { HeightSource } from '../src/types';
 
 const proj = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
 
@@ -99,5 +100,18 @@ describe('pick con elevazione', () => {
         g.setHeight(1, 1, 6);
         const s = proj.project(1, 1, 6);
         expect(pick(proj, s.x, s.y, g)).toEqual({ gx: 1, gy: 1, z: 6 });
+    });
+
+    it('una sorgente che non dichiara maxElevation sonda solo il pavimento', () => {
+        // La capability e' opzionale, e la sua assenza ha una conseguenza
+        // DOCUMENTATA invece che una sorpresa: senza il campo e senza
+        // opts.maxElevation il limite e' 0, quindi tutto cio' che e' elevato e'
+        // impescabile. Passando il limite esplicitamente, si ritrova.
+        const g = createHeightGrid(8, 8, 0);
+        g.setHeight(1, 1, 4);
+        const nuda: HeightSource = { heightAt: (gx, gy) => g.heightAt(gx, gy) };
+        const s = proj.project(1, 1, 4);
+        expect(pick(proj, s.x, s.y, nuda)).toBeNull();
+        expect(pick(proj, s.x, s.y, nuda, { maxElevation: 4 })).toEqual({ gx: 1, gy: 1, z: 4 });
     });
 });

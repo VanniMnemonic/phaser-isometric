@@ -17,6 +17,20 @@ export interface GridRect { minX: number; maxX: number; minY: number; maxY: numb
  */
 export interface HeightSource {
     heightAt(gx: number, gy: number): number | null;
+
+    /**
+     * Capability OPZIONALE: un limite superiore alle quote presenti.
+     *
+     * Se la sorgente la espone, `pick` la usa come default per sapere fino a che
+     * quota risalire. Se NON la espone, chi chiama `pick` DEVE passare
+     * `opts.maxElevation`, altrimenti il default e' 0 e il picking sonda solo il
+     * pavimento: tutto cio' che e' elevato diventa impescabile, in silenzio.
+     *
+     * E' dichiarata qui, e non letta con un cast strutturale, proprio perche' chi
+     * implementa la propria sorgente la veda nell'interfaccia invece di scoprirla
+     * da un risultato sbagliato.
+     */
+    readonly maxElevation?: number;
 }
 
 /** Come si costruisce una proiezione. Entrambe le forme producono la stessa matrice. */
