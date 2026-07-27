@@ -77,4 +77,26 @@ describe('createHeightGrid', () => {
         const g = createHeightGrid(0, 0);
         expect(g.heightAt(0, 0)).toBeNull();
     });
+
+    it('e\' congelata: assegnare a width non la cambia (Finding 8)', () => {
+        // Stessa famiglia del difetto di aliasing sull'origine gia' corretto in
+        // projection.ts: senza il freeze, `grid.width = 100` lascerebbe il campo
+        // pubblico in disaccordo col `width` catturato dalla closure di
+        // `inside()`. I moduli sono ESM quindi girano in strict mode: assegnare
+        // a una proprieta' non scrivibile LANCIA, non fallisce in silenzio.
+        const g = createHeightGrid(4, 4);
+        expect(Object.isFrozen(g)).toBe(true);
+        expect(() => { (g as unknown as { width: number }).width = 100; }).toThrow(TypeError);
+        expect(g.width).toBe(4);
+    });
+
+    it('il freeze non rompe il getter maxElevation: resta dinamico dopo setHeight', () => {
+        // maxElevation e' un accessor, non una proprieta' dati: congelare
+        // l'oggetto lo rende non ri-definibile, ma non ne disabilita la lettura
+        // dinamica dalla variabile di closure.
+        const g = createHeightGrid(4, 4);
+        expect(g.maxElevation).toBe(0);
+        g.setHeight(1, 1, 7);
+        expect(g.maxElevation).toBe(7);
+    });
 });

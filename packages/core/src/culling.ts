@@ -2,29 +2,30 @@ import type { Projection } from './projection';
 import type { GridRect, Point, Rect } from './types';
 
 export interface CullPadding {
-    /** Quanto un oggetto si estende SOPRA il proprio ancoraggio, in pixel.
-     *  Include l'altezza della grafica E maxElevation * elevationStep, perche'
-     *  la quota alza lo sprite sullo schermo. */
+    /** How much an object extends ABOVE its own anchor, in pixels. Include
+     *  the graphic's height AND maxElevation * elevationStep, because
+     *  elevation lifts the sprite on screen. */
     above: number;
-    /** Quanto si estende SOTTO l'ancoraggio. Di solito 0 per sprite ancorati ai piedi. */
+    /** How much it extends BELOW the anchor. Usually 0 for sprites anchored
+     *  at their feet. */
     below: number;
-    /** La mezza larghezza massima della grafica. */
+    /** The graphic's maximum half-width. */
     sides: number;
 }
 
 /**
- * L'intervallo di celle che puo' intersecare la vista. Estremi INCLUSI.
+ * The range of cells that can intersect the view. Both ends INCLUSIVE.
  *
- * Si invertono i quattro angoli della vista allargata e si prende l'AABB in
- * spazio griglia: quattro inversioni, indipendentemente dalla dimensione della
- * mappa. IsometricCullTiles di Phaser itera invece l'INTERA mappa a ogni frame
- * chiamando tileToWorldXY per ogni cella (200x200 = 40.000 conversioni/frame), e
- * CheckIsoBounds valuta solo il punto d'origine con padding calcolato sulla
- * tileHeight della mappa — per questo i tile piu' alti della cella poppano.
+ * The widened view's four corners are unprojected and the AABB is taken in
+ * grid space: four inversions, regardless of map size. Phaser's
+ * IsometricCullTiles instead iterates the ENTIRE map every frame, calling
+ * tileToWorldXY for every cell (200x200 = 40,000 conversions/frame), and
+ * CheckIsoBounds only evaluates the origin point with padding computed from
+ * the map's tileHeight — which is why taller-than-cell tiles pop.
  *
- * Il risultato e' CONSERVATIVO: puo' includere celle non visibili, non puo' mai
- * escluderne una visibile. Sbagliare per eccesso costa qualche iterazione;
- * sbagliare per difetto fa sparire pezzi di mondo.
+ * The result is CONSERVATIVE: it can include cells that aren't visible, it
+ * can never exclude one that is. Erring high costs a few extra iterations;
+ * erring low makes chunks of the world disappear.
  */
 export function cullBounds(projection: Projection, view: Rect, pad: CullPadding): GridRect {
     // Un oggetto che si estende `above` sopra il proprio ancoraggio e' visibile

@@ -1,12 +1,12 @@
 /**
- * Il nucleo matematico puro di phaser-isometric.
+ * The pure mathematical core of phaser-isometric.
  *
- * Zero import di Phaser: gira in Node. Lo stesso codice alimenta il plugin, i
- * test e i tool dell'oracolo MCP — due implementazioni della stessa proiezione
- * divergerebbero, sempre.
+ * Zero Phaser imports: runs in Node. The same code powers the plugin, the
+ * tests, and the MCP oracle's tools — two implementations of the same
+ * projection would eventually diverge.
  *
- * CONVENZIONE, valida per ogni funzione: `project` restituisce il CENTRO della
- * faccia superiore della cella.
+ * CONVENTION, valid for every function: `project` returns the CENTER of the
+ * cell's top face.
  */
 
 export { createProjection } from './projection';

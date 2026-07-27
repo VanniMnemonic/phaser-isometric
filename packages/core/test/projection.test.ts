@@ -31,7 +31,7 @@ describe('createProjection', () => {
             expect.unreachable('doveva lanciare');
         } catch (e) {
             const err = e as IsoConfigError;
-            expect(err.symptom).toContain('invertibile');
+            expect(err.symptom).toContain('invertible');
             expect(err.fix.length).toBeGreaterThan(0);
         }
     });
@@ -57,6 +57,25 @@ describe('createProjection', () => {
             .toThrow(IsoConfigError);
         expect(() => createProjection({ type: 'matrix', a: 1, b: 0, c: 0, d: Number.POSITIVE_INFINITY }))
             .toThrow(IsoConfigError);
+    });
+
+    it('un\'origine non finita nomina la correzione giusta, non "arrotonda"', () => {
+        // Number.isInteger(NaN) e' false, quindi senza un controllo di finitezza
+        // PRIMA di quello di interezza, un'origine NaN cadrebbe nel ramo "non e'
+        // intera" e la correzione suggerita sarebbe "arrotonda l'origine" — non
+        // e' una correzione per un NaN.
+        try {
+            createProjection(
+                { type: 'diamond', tileWidth: 96, tileHeight: 48 },
+                { origin: { x: Number.NaN, y: 0 } }
+            );
+            expect.unreachable('doveva lanciare');
+        } catch (e) {
+            const err = e as IsoConfigError;
+            expect(err.symptom).toContain('finite');
+            expect(err.fix).toContain('finite');
+            expect(err.fix).not.toContain('round the origin');
+        }
     });
 });
 

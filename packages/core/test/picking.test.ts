@@ -115,3 +115,83 @@ describe('pick con elevazione', () => {
         expect(pick(proj, s.x, s.y, nuda, { maxElevation: 4 })).toEqual({ gx: 1, gy: 1, z: 4 });
     });
 });
+
+describe('pick con limiti non finiti (Finding 1)', () => {
+    // Percorso caldo, quindi la guardia non deve MAI lanciare: deve fallire
+    // restituendo null. Non si esegue mai il loop non protetto qui: con
+    // maxElevation = Infinity, `Infinity - 1 === Infinity`, quindi
+    // `for (z = maxElevation; z >= 0; z--)` non termina mai. La prova
+    // dell'hang pre-fix e' stata raccolta fuori dalla suite (processo ucciso
+    // dopo un timeout di 8s), non qui: un test che appende non finisce mai
+    // sarebbe peggio di nessun test.
+    const flat = createHeightGrid(4, 4, 0);
+
+    it('un opts.maxElevation non finito restituisce null invece di entrare in loop', () => {
+        const s = proj.project(1, 1, 0);
+        expect(pick(proj, s.x, s.y, flat, { maxElevation: Number.POSITIVE_INFINITY })).toBeNull();
+        expect(pick(proj, s.x, s.y, flat, { maxElevation: Number.NEGATIVE_INFINITY })).toBeNull();
+        expect(pick(proj, s.x, s.y, flat, { maxElevation: Number.NaN })).toBeNull();
+    });
+
+    it('un opts.minElevation non finito restituisce null invece di entrare in loop', () => {
+        // Simmetrico a maxElevation: con minElevation = -Infinity, qualunque z
+        // finito soddisfa sempre `z >= minElevation`, quindi il decremento non
+        // raggiunge mai il limite.
+        const s = proj.project(1, 1, 0);
+        expect(pick(proj, s.x, s.y, flat, { minElevation: Number.NEGATIVE_INFINITY })).toBeNull();
+        expect(pick(proj, s.x, s.y, flat, { minElevation: Number.NaN })).toBeNull();
+    });
+
+    it('una HeightSource di terze parti con maxElevation = Infinity non manda pick in loop', () => {
+        // Lo scenario del finding: opts.maxElevation e' assente, quindi si
+        // legge heights.maxElevation, che una sorgente scritta male puo'
+        // dichiarare Infinity.
+        const cattiva: HeightSource = { heightAt: () => 0, maxElevation: Number.POSITIVE_INFINITY };
+        expect(pick(proj, 0, 0, cattiva)).toBeNull();
+    });
+});
+
+describe('pick con minElevation (Finding 2)', () => {
+    it('senza minElevation, una griglia riempita sotto zero resta impescabile ovunque', () => {
+        // createHeightGrid(w, h, -1) porta maxElevation a -1: il loop
+        // `for (z = maxElevation; z >= 0; z--)` con maxElevation = -1 non entra
+        // mai nel corpo. Comportamento di default preservato: nessuna breaking
+        // change per chi non passa minElevation.
+        const sunk = createHeightGrid(4, 4, -1);
+        const s = proj.project(1, 1, -1);
+        expect(pick(proj, s.x, s.y, sunk)).toBeNull();
+    });
+
+    it('con minElevation abbassato, una zona sprofondata ridiventa pescabile', () => {
+        const sunk = createHeightGrid(4, 4, -1);
+        const s = proj.project(1, 1, -1);
+        expect(pick(proj, s.x, s.y, sunk, { minElevation: -1 })).toEqual({ gx: 1, gy: 1, z: -1 });
+    });
+
+    it('minElevation limita quanto in basso si scende, come maxElevation limita quanto in alto si sale', () => {
+        const sunk = createHeightGrid(4, 4, null);
+        sunk.setHeight(2, 2, -3);
+        const s = proj.project(2, 2, -3);
+        expect(pick(proj, s.x, s.y, sunk, { minElevation: -1 })).toBeNull();
+        expect(pick(proj, s.x, s.y, sunk, { minElevation: -3 })).toEqual({ gx: 2, gy: 2, z: -3 });
+    });
+});
+
+describe('pick non restituisce -0 (Finding 7)', () => {
+    it('un punto nella meta\' sinistra della cella (0,0) restituisce gx: 0, non gx: -0', () => {
+        // round(-0.4) === -0 in JS. Object.is distingue -0 da +0, e alcune
+        // asserzioni (Object.is, alcune varianti di toEqual) fallirebbero su un
+        // risultato matematicamente corretto ma "negativo zero".
+        const flat = createHeightGrid(4, 4, 0);
+        const c = proj.project(0, 0, 0);
+        const left = proj.cornersOf(0, 0, 0)[3];
+        // Un punto vicino al vertice sinistro ma dentro la cella: sposta round(x)
+        // verso un -0, mentre y resta 0 esatto (positivo).
+        const px = c.x + (left.x - c.x) * 0.1;
+        const py = c.y;
+        const result = pick(proj, px, py, flat);
+        expect(result).toEqual({ gx: 0, gy: 0, z: 0 });
+        expect(Object.is(result?.gx, -0)).toBe(false);
+        expect(Object.is(result?.gx, 0)).toBe(true);
+    });
+});

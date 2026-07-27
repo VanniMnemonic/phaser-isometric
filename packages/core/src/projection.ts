@@ -1,17 +1,17 @@
-import { IsoConfigError } from './errors';
+import { IsoConfigError, requireFinite, requirePositive } from './errors';
 import type { Point, ProjectionSpec, ProjectionOptions } from './types';
 
 /**
- * Una proiezione isometrica.
+ * An isometric projection.
  *
- * CONVENZIONE, unica e non negoziabile: `project` restituisce il CENTRO della
- * faccia superiore della cella. E' la scelta che rende l'arrotondamento esatto
- * invece che approssimato — l'insieme dei punti con round(gx)=0 e round(gy)=0 e'
- * il quadrato di lato 1 centrato sull'origine, che attraverso la matrice e'
- * ESATTAMENTE il rombo della cella. Phaser si contraddice proprio qui:
- * IsometricTileToWorldXY restituisce l'angolo del bounding box mentre
- * IsometricWorldToTileXY assume il vertice del rombo, e il round-trip esce
- * sfasato di mezza cella.
+ * CONVENTION, single and non-negotiable: `project` returns the CENTER of the
+ * cell's top face. That is the choice that makes the rounding exact instead
+ * of approximate — the set of points with round(gx)=0 and round(gy)=0 is the
+ * unit square centered on the origin, which the matrix maps EXACTLY onto the
+ * cell's diamond. This is precisely where Phaser contradicts itself:
+ * IsometricTileToWorldXY returns the bounding-box corner while
+ * IsometricWorldToTileXY assumes the diamond's vertex, so the round-trip
+ * comes out shifted by half a cell.
  */
 export interface Projection {
     readonly a: number;
@@ -27,25 +27,6 @@ export interface Projection {
     unproject(sx: number, sy: number, z?: number): Point;
     unprojectInto(out: Point, sx: number, sy: number, z?: number): Point;
     cornersOf(gx: number, gy: number, z?: number): [Point, Point, Point, Point];
-}
-
-function requireFinite(value: number, name: string): void {
-    if (!Number.isFinite(value)) {
-        throw new IsoConfigError(
-            `${name} non e' un numero finito (vale ${String(value)})`,
-            `passa un numero finito per ${name}`
-        );
-    }
-}
-
-function requirePositive(value: number, name: string): void {
-    requireFinite(value, name);
-    if (value <= 0) {
-        throw new IsoConfigError(
-            `${name} deve essere maggiore di zero (vale ${value})`,
-            `passa un ${name} positivo, per esempio 96`
-        );
-    }
 }
 
 export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions = {}): Projection {
@@ -80,16 +61,21 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
     const det = a * d - b * c;
     if (det === 0) {
         throw new IsoConfigError(
-            `la matrice di proiezione non e' invertibile (det = 0, a=${a} b=${b} c=${c} d=${d})`,
-            'le colonne (a,b) e (c,d) sono collineari: cambiane una, oppure usa il preset diamond'
+            `the projection matrix is not invertible (det = 0, a=${a} b=${b} c=${c} d=${d})`,
+            'columns (a,b) and (c,d) are collinear: change one of them, or use the diamond preset'
         );
     }
 
     const rawOrigin: Point = opts.origin ?? { x: 0, y: 0 };
+    // Finitezza PRIMA di interezza: Number.isInteger(NaN) e' false, quindi senza
+    // questo ordine un'origine NaN cadrebbe nel ramo "non e' intera" e la
+    // correzione suggerita sarebbe "arrotonda" — non e' una correzione per NaN.
+    requireFinite(rawOrigin.x, 'origin.x');
+    requireFinite(rawOrigin.y, 'origin.y');
     if (!Number.isInteger(rawOrigin.x) || !Number.isInteger(rawOrigin.y)) {
         throw new IsoConfigError(
-            `l'origine deve avere componenti intere (vale x=${rawOrigin.x} y=${rawOrigin.y})`,
-            'arrotonda l\'origine: una traslazione frazionaria reintroduce l\'arrotondamento che la convenzione del centro elimina'
+            `origin must have integer components (got x=${rawOrigin.x} y=${rawOrigin.y})`,
+            'round the origin: a fractional translation reintroduces exactly the rounding that the center convention eliminates'
         );
     }
 

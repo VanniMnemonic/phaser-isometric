@@ -1,12 +1,12 @@
-import { IsoConfigError } from './errors';
+import { requireNonNegativeInteger } from './errors';
 import type { HeightSource } from './types';
 
 export interface HeightGrid extends HeightSource {
     readonly width: number;
     readonly height: number;
-    /** Un limite SUPERIORE alla quota presente. Monotono: non scende quando una
-     *  cella viene abbassata, perche' ricalcolarlo costerebbe O(W*H) a ogni
-     *  scrittura. E' tutto cio' di cui il picking ha bisogno. */
+    /** An UPPER bound on the elevations present. Monotonic: it never goes
+     *  down when a cell is lowered, because recomputing it would cost
+     *  O(W*H) on every write. It is all picking needs. */
     readonly maxElevation: number;
     setHeight(gx: number, gy: number, z: number | null): void;
 }
@@ -14,14 +14,14 @@ export interface HeightGrid extends HeightSource {
 const ABYSS = Number.NEGATIVE_INFINITY;
 
 /**
- * Una heightmap densa e rettangolare: una quota per cella, `null` = abisso.
+ * A dense, rectangular heightmap: one elevation per cell, `null` = abyss.
  *
- * `null` NON e' quota 0. Zero e' terreno valido e calpestabile; null e' assenza
- * di terreno. Un `if (!h)` li confonde entrambi, ed e' il difetto classico di
- * ogni heightmap sparsa.
+ * `null` is NOT elevation 0. Zero is valid, walkable ground; null is the
+ * absence of ground. An `if (!h)` check confuses the two, and that is the
+ * classic defect of every sparse heightmap.
  *
- * Internamente l'abisso e' -Infinity dentro un Float64Array: un solo buffer,
- * nessun boxing, e il confronto con una quota reale e' sempre falso.
+ * Internally the abyss is -Infinity inside a Float64Array: a single buffer,
+ * no boxing, and comparing against a real elevation is always false.
  */
 export function createHeightGrid(width: number, height: number, fill: number | null = 0): HeightGrid {
     // Validare alla costruzione, come createProjection e createDepthAssigner.
@@ -30,14 +30,8 @@ export function createHeightGrid(width: number, height: number, fill: number | n
     // `heightAt` violerebbe il proprio contratto `number | null` e `setHeight`
     // perderebbe la scrittura in silenzio — un undefined che si propaga fino al
     // picking, dove diventa difficile da diagnosticare.
-    for (const [name, value] of [['width', width], ['height', height]] as const) {
-        if (!Number.isInteger(value) || value < 0) {
-            throw new IsoConfigError(
-                `${name} deve essere un intero non negativo (vale ${String(value)})`,
-                `passa un intero >= 0 per ${name}`
-            );
-        }
-    }
+    requireNonNegativeInteger(width, 'width');
+    requireNonNegativeInteger(height, 'height');
 
     const cells = new Float64Array(width * height);
     cells.fill(fill === null ? ABYSS : fill);
@@ -49,7 +43,14 @@ export function createHeightGrid(width: number, height: number, fill: number | n
             && gx >= 0 && gx < width && gy >= 0 && gy < height;
     }
 
-    return {
+    // Congelato come createProjection e createDepthAssigner: senza,
+    // `grid.width = 100` lascerebbe il campo pubblico in disaccordo con il
+    // `width` catturato dalla closure di `inside()` — la stessa famiglia di
+    // difetto dell'aliasing sull'origine gia' corretto in projection.ts.
+    // `maxElevation` resta un getter dietro il freeze: legge la variabile di
+    // closure, non una proprieta' dati, quindi congelare l'oggetto non ne
+    // blocca l'aggiornamento via `setHeight`.
+    return Object.freeze({
         width,
         height,
         get maxElevation(): number { return maxElevation; },
@@ -65,5 +66,5 @@ export function createHeightGrid(width: number, height: number, fill: number | n
             cells[gy * width + gx] = z === null ? ABYSS : z;
             if (z !== null && z > maxElevation) maxElevation = z;
         }
-    };
+    });
 }

@@ -1,4 +1,4 @@
-import { IsoConfigError } from './errors';
+import { requireFinite } from './errors';
 import type { Projection } from './projection';
 import type { Cell, Point, Rect } from './types';
 
@@ -22,18 +22,18 @@ function boundsOf(points: Iterable<Point>): Rect | null {
 }
 
 /**
- * L'AABB schermo di una griglia W x H.
+ * The screen-space AABB of a W x H grid.
  *
- * L'estensione reale e' (W+H)*tw/2 in orizzontale e (W+H)*th/2 in verticale, con
- * la x che parte NEGATIVA: la cella (0, H-1) e' il vertice piu' a sinistra.
- * widthInPixels/heightInPixels e TilemapLayerBase.setSize di Phaser usano invece
- * la formula ortogonale, quindi
+ * The real extent is (W+H)*tw/2 horizontally and (W+H)*th/2 vertically, with
+ * x starting NEGATIVE: cell (0, H-1) is the leftmost vertex. Phaser's
+ * widthInPixels/heightInPixels and TilemapLayerBase.setSize use the
+ * orthogonal formula instead, so
  *     camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels)
- * e' sbagliato su iso.
+ * is wrong on iso.
  *
- * I quattro angoli della griglia bastano: la trasformazione e' affine, quindi
- * ogni cella interna cade nell'inviluppo convesso dei quattro angoli, e gli
- * scostamenti dei vertici del rombo sono gli stessi per ogni cella.
+ * The grid's four corners are enough: the transform is affine, so every
+ * interior cell falls inside the convex hull of the four corners, and the
+ * diamond's vertex offsets are the same for every cell.
  */
 export function worldBounds(
     projection: Projection,
@@ -51,18 +51,9 @@ export function worldBounds(
     //
     // Non e' un percorso caldo: worldBounds si chiama a ogni cambio di livello,
     // non a ogni frame. Lanciare qui e' la stessa disciplina di createProjection.
-    for (const [name, value] of [
-        ['gridWidth', gridWidth],
-        ['gridHeight', gridHeight],
-        ['maxElevation', opts.maxElevation ?? 0]
-    ] as const) {
-        if (!Number.isFinite(value)) {
-            throw new IsoConfigError(
-                `${name} non e' un numero finito (vale ${String(value)})`,
-                `passa un numero finito per ${name}`
-            );
-        }
-    }
+    requireFinite(gridWidth, 'gridWidth');
+    requireFinite(gridHeight, 'gridHeight');
+    requireFinite(opts.maxElevation ?? 0, 'maxElevation');
 
     if (gridWidth <= 0 || gridHeight <= 0) {
         return { x: 0, y: 0, width: 0, height: 0 };
@@ -85,10 +76,10 @@ export function worldBounds(
 }
 
 /**
- * L'AABB schermo delle sole celle date. Serve a centrare un diorama sul
- * contenuto DISEGNATO invece che sull'estensione teorica della griglia.
- * `null` se l'insieme e' vuoto: un rettangolo degenere sarebbe indistinguibile
- * da un contenuto di dimensione zero.
+ * The screen-space AABB of only the given cells. Useful for centering a
+ * diorama on the content actually DRAWN instead of the grid's theoretical
+ * extent. `null` when the set is empty: a degenerate rectangle would be
+ * indistinguishable from zero-size content.
  */
 export function contentBounds(projection: Projection, cells: Iterable<Cell>): Rect | null {
     const points: Point[] = [];

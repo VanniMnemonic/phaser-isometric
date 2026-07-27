@@ -2,30 +2,29 @@ import { IsoConfigError } from './errors';
 import type { Band, DepthLayout, DepthStrategy } from './types';
 
 /**
- * chiave = (gx + gy + rowOffset) * rowStride + banda * bandStride + sub
+ * key = (gx + gy + rowOffset) * rowStride + band * bandStride + sub
  *
- * 15 * 256 + 255 = 4095 < 4096: due righe adiacenti non possono mai
- * sovrapporsi. Il comparatore di Phaser e' `a._depth - b._depth`, fisso e senza
- * hook: a parita' di depth l'ordine dipende dall'inserimento nella display
- * list, quindi la garanzia va costruita QUI — a valle non c'e' piu' modo.
+ * 15 * 256 + 255 = 4095 < 4096: two adjacent rows can never overlap.
+ * Phaser's comparator is `a._depth - b._depth`, fixed with no hook: when
+ * depth ties, ordering falls back to display-list insertion order, so the
+ * guarantee has to be built HERE — there is no way to fix it downstream.
  *
- * Semantica dei cinque campi di `DepthLayout` (non documentati altrove —
- * questo e' il primo e unico consumatore del tipo):
- * - `rowStride`: quanto vale, in unita' di depth, avanzare di UNA riga
- *   (gx + gy). Deve essere maggiore dello spazio occupato da tutte le bande
- *   e i sub di una riga, altrimenti una riga potrebbe raggiungere quella
- *   successiva e la garanzia "riga domina banda" salterebbe.
- * - `bandStride`: quanto vale avanzare di UNA banda all'interno della stessa
- *   riga. Deve essere maggiore dello spazio occupato da tutti i sub di una
- *   banda (`subCapacity - 1`).
- * - `subCapacity`: quanti sub distinti puo' avere una singola cella+banda
- *   (0..subCapacity-1). Un sub fuori da questo intervallo e' rifiutato a
- *   chiamata.
- * - `maxBands`: quante bande esistono (0..maxBands-1). Una banda fuori da
- *   questo intervallo e' rifiutata a chiamata.
- * - `rowOffset`: costante sommata a (gx + gy) prima di moltiplicare per
- *   rowStride. Serve a spostare l'intero intervallo di chiavi in modo che
- *   coordinate di griglia negative producano comunque chiavi non negative.
+ * Semantics of `DepthLayout`'s five fields (undocumented elsewhere — this is
+ * the type's first and only consumer):
+ * - `rowStride`: how much, in depth units, advancing by ONE row (gx + gy) is
+ *   worth. Must exceed the space occupied by every band and sub of a single
+ *   row, or a row could reach into the next one and the "row dominates band"
+ *   guarantee would break.
+ * - `bandStride`: how much advancing by ONE band within the same row is
+ *   worth. Must exceed the space occupied by every sub of a band
+ *   (`subCapacity - 1`).
+ * - `subCapacity`: how many distinct subs a single cell+band can have
+ *   (0..subCapacity-1). A sub outside this range is rejected at call time.
+ * - `maxBands`: how many bands exist (0..maxBands-1). A band outside this
+ *   range is rejected at call time.
+ * - `rowOffset`: a constant added to (gx + gy) before multiplying by
+ *   rowStride. Lets the whole key range shift so that negative grid
+ *   coordinates still produce non-negative keys.
  */
 export const DEFAULT_LAYOUT: DepthLayout = Object.freeze({
     rowStride: 4096,
@@ -53,9 +52,9 @@ export interface DepthAssigner {
 export interface DepthAssignerOptions {
     layout?: Partial<DepthLayout>;
     strategy?: DepthStrategy;
-    /** La riga massima (gx+gy) che il mondo puo' raggiungere. Serve a rifiutare
-     *  alla COSTRUZIONE un layout che traboccherebbe, invece di scoprirlo a
-     *  runtime quando l'ordine e' gia' sbagliato. */
+    /** The maximum row (gx+gy) the world can reach. Lets a layout that would
+     *  overflow be rejected AT CONSTRUCTION, instead of discovered at
+     *  runtime once the ordering is already wrong. */
     maxRow?: number;
 }
 
@@ -68,8 +67,8 @@ export function createDepthAssigner(opts: DepthAssignerOptions = {}): DepthAssig
         const value = positivi[name];
         if (!Number.isSafeInteger(value) || value <= 0) {
             throw new IsoConfigError(
-                `${name} deve essere un intero positivo (vale ${String(value)})`,
-                `passa un intero positivo per ${name}`
+                `${name} must be a positive integer (got ${String(value)})`,
+                `pass a positive integer for ${name}, for example ${DEFAULT_LAYOUT[name]}`
             );
         }
     }
@@ -77,8 +76,8 @@ export function createDepthAssigner(opts: DepthAssignerOptions = {}): DepthAssig
     const maxWithinRow = (maxBands - 1) * bandStride + (subCapacity - 1);
     if (maxWithinRow >= rowStride) {
         throw new IsoConfigError(
-            `le bande invadono la riga successiva: il massimo interno alla riga e' ${maxWithinRow}, ma rowStride e' ${rowStride}`,
-            'aumenta rowStride, oppure riduci bandStride, subCapacity o maxBands'
+            `bands spill into the next row: the maximum within a row is ${maxWithinRow}, but rowStride is ${rowStride}`,
+            'increase rowStride, or reduce bandStride, subCapacity, or maxBands'
         );
     }
 
@@ -86,22 +85,31 @@ export function createDepthAssigner(opts: DepthAssignerOptions = {}): DepthAssig
     const worstKey = (maxRow + rowOffset) * rowStride + maxWithinRow;
     if (!Number.isSafeInteger(worstKey)) {
         throw new IsoConfigError(
-            `la chiave massima (riga ${maxRow}) non e' un intero esatto: ${worstKey}`,
-            'riduci rowStride oppure maxRow: oltre 2^53 le chiavi smettono di essere distinguibili'
+            `the maximum key (row ${maxRow}) is not an exact integer: ${worstKey}`,
+            'reduce rowStride or maxRow: past 2^53 keys stop being distinguishable'
         );
     }
 
     const strategy: DepthStrategy = opts.strategy ?? ((gx, gy, band, sub) => {
+        // Consistente con band/sub qui sotto: senza questo controllo un gx/gy
+        // frazionario (es. un attore a meta' passo fra due celle) rompe "la riga
+        // domina la banda" — vedi Task 3 della review finale.
+        if (!Number.isInteger(gx) || !Number.isInteger(gy)) {
+            throw new IsoConfigError(
+                `gx/gy must be integers (got gx=${String(gx)} gy=${String(gy)})`,
+                'round grid coordinates before computing depth: a fractional gx/gy breaks the row-dominates-band guarantee'
+            );
+        }
         if (!Number.isInteger(band) || band < 0 || band >= maxBands) {
             throw new IsoConfigError(
-                `banda ${String(band)} fuori dal layout (ammesse 0..${maxBands - 1})`,
-                'usa una banda valida, oppure alza maxBands nel layout'
+                `band ${String(band)} is outside the layout (allowed 0..${maxBands - 1})`,
+                'use a valid band, or raise maxBands in the layout'
             );
         }
         if (!Number.isInteger(sub) || sub < 0 || sub >= subCapacity) {
             throw new IsoConfigError(
-                `sub ${String(sub)} fuori dalla capacita' (ammessi 0..${subCapacity - 1})`,
-                'alza subCapacity nel layout, oppure riduci gli oggetti nella stessa cella e banda'
+                `sub ${String(sub)} is outside the capacity (allowed 0..${subCapacity - 1})`,
+                'raise subCapacity in the layout, or reduce the number of objects sharing the same cell and band'
             );
         }
         return (gx + gy + rowOffset) * rowStride + band * bandStride + sub;

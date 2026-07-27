@@ -89,6 +89,32 @@ describe('createDepthAssigner', () => {
             .toThrow(IsoConfigError);
     });
 
+    it('rifiuta gx/gy non interi, altrimenti la riga non domina piu\' la banda (Finding 3)', () => {
+        // Con gx = 3.9 e banda overlay (6): 3.9*4096 + 6*256 = 17510.4, che
+        // SUPERA 16384, la chiave di un pavimento in riga 4 (4*4096). "La riga
+        // domina la banda" richiede gx/gy interi tanto quanto richiede banda/sub
+        // interi: un attore a meta' passo fra due celle e' l'input piu' plausibile
+        // che un consumatore possa passare senza accorgersene.
+        expect(() => d.keyFor(3.9, 0, DEFAULT_BANDS.overlay)).toThrow(IsoConfigError);
+        expect(() => d.keyFor(0, 3.9, DEFAULT_BANDS.overlay)).toThrow(IsoConfigError);
+        try {
+            d.keyFor(3.9, 0, DEFAULT_BANDS.overlay);
+            expect.unreachable('doveva lanciare');
+        } catch (e) {
+            expect((e as IsoConfigError).fix).toContain('round');
+        }
+    });
+
+    it('rifiuta alla costruzione uno stride o una capacita\' non intera o non positiva', () => {
+        // L'unico ramo di validazione del costruttore rimasto scoperto: gli altri
+        // due throw della costruzione (trabocco di riga, bande che invadono la
+        // riga) sono gia' testati sopra e sotto.
+        expect(() => createDepthAssigner({ layout: { rowStride: 0 } })).toThrow(IsoConfigError);
+        expect(() => createDepthAssigner({ layout: { bandStride: -1 } })).toThrow(IsoConfigError);
+        expect(() => createDepthAssigner({ layout: { subCapacity: 2.5 } })).toThrow(IsoConfigError);
+        expect(() => createDepthAssigner({ layout: { maxBands: Number.NaN } })).toThrow(IsoConfigError);
+    });
+
     it('rifiuta alla COSTRUZIONE un layout che potrebbe traboccare', () => {
         // La validazione deve avvenire una volta sola, non a ogni chiamata.
         expect(() => createDepthAssigner({
