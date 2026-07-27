@@ -715,6 +715,18 @@ describe('project', () => {
         expect(r).toBe(out);
         expect(out).toEqual({ x: 48, y: 24 });
     });
+
+    it('non aliasa l\'oggetto origine del chiamante', () => {
+        // Se le closure catturassero l'oggetto del chiamante invece di una copia,
+        // `origin` resterebbe fermo mentre `project()` cambierebbe risultato — due
+        // fonti di verita' che divergono in silenzio. E un `o.x = 0.5` successivo
+        // aggirerebbe la validazione dell'origine intera senza alcun errore.
+        const o = { x: 400, y: 300 };
+        const t = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 }, { origin: o });
+        o.x = 999999;
+        expect(t.origin).toEqual({ x: 400, y: 300 });
+        expect(t.project(0, 0, 0)).toEqual({ x: 400, y: 300 });
+    });
 });
 ```
 
@@ -815,13 +827,22 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         );
     }
 
-    const origin: Point = opts.origin ?? { x: 0, y: 0 };
-    if (!Number.isInteger(origin.x) || !Number.isInteger(origin.y)) {
+    const rawOrigin: Point = opts.origin ?? { x: 0, y: 0 };
+    if (!Number.isInteger(rawOrigin.x) || !Number.isInteger(rawOrigin.y)) {
         throw new IsoConfigError(
-            `l'origine deve avere componenti intere (vale x=${origin.x} y=${origin.y})`,
+            `l'origine deve avere componenti intere (vale x=${rawOrigin.x} y=${rawOrigin.y})`,
             'arrotonda l\'origine: una traslazione frazionaria reintroduce l\'arrotondamento che la convenzione del centro elimina'
         );
     }
+
+    // UNA sola copia congelata, usata sia dalle closure sia dal campo pubblico.
+    // Legare le closure all'oggetto del CHIAMANTE lo lascerebbe mutabile dopo la
+    // costruzione: `p.origin` resterebbe fermo mentre `p.project()` cambierebbe
+    // risultato, e un `o.x = 0.5` successivo aggirerebbe del tutto la validazione
+    // dell'origine intera — che esiste proprio per proteggere la convenzione del
+    // centro. Un Point e' un oggetto che un chiamante Phaser riusa e muta di
+    // frame in frame: trattenerne il riferimento non e' un'ipotesi teorica.
+    const origin = Object.freeze({ ...rawOrigin });
 
     function projectInto(out: Point, gx: number, gy: number, z = 0): Point {
         out.x = a * gx + c * gy + origin.x;
@@ -831,7 +852,7 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
 
     return Object.freeze({
         a, b, c, d, det, elevationStep,
-        origin: Object.freeze({ ...origin }),
+        origin,
         project(gx: number, gy: number, z = 0): Point {
             return projectInto({ x: 0, y: 0 }, gx, gy, z);
         },
@@ -847,7 +868,7 @@ pnpm vitest run packages/core/test/projection.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 13 test; typecheck exit 0.
+Atteso: **PASS**, 14 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1023,7 +1044,7 @@ pnpm vitest run packages/core/test/projection.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 19 test; typecheck exit 0.
+Atteso: **PASS**, 20 test; typecheck exit 0.
 
 - [ ] **Step 5: Batteria di mutazione — provare che i test mordono**
 
@@ -1171,7 +1192,7 @@ pnpm vitest run packages/core/test/projection.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 23 test; typecheck exit 0.
+Atteso: **PASS**, 24 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1447,7 +1468,7 @@ pnpm vitest run packages/core/test/depth.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 13 test; typecheck exit 0.
+Atteso: **PASS**, 14 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -2523,7 +2544,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Atteso: **PASS** su tutti e 9 i file di test (~80 casi); typecheck exit 0.
+Atteso: **PASS** su tutti e 9 i file di test (~81 casi); typecheck exit 0.
 
 > Non incanalare mai questi comandi in `tail`, `head` o `grep` prima di un commit: un pipeline
 > restituisce l'exit code dell'ULTIMO comando, quindi `pnpm test | tail -5 && git commit`
@@ -2544,7 +2565,7 @@ Vite in library mode ne emette zero."
 
 ## Definition of Done — Piano 1
 
-- [ ] `pnpm test` verde: 9 file di test, ~80 casi.
+- [ ] `pnpm test` verde: 9 file di test, ~81 casi.
 - [ ] `pnpm typecheck` exit 0.
 - [ ] `pnpm build:types` produce 9 file `.d.ts`.
 - [ ] Le tre guardie architetturali passano, **e** la guardia sugli import è stata vista
