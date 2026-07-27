@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, '../src');
@@ -19,27 +20,60 @@ function collect(dir: string): string[] {
 }
 
 /**
- * Il sorgente senza commenti. Il nome `Phaser` compare legittimamente nei
- * commenti dei moduli puri — spiegare PERCHE' non si usa Phaser e' esattamente
- * il tipo di nota che merita di stare li'.
- *
- * L'ordine conta, e non e' quello che verrebbe naturale. Togliendo prima i
- * blocchi, una riga di commento che contiene un apri-blocco lascia in giro
- * quell'apertura, e la regex dei blocchi la insegue fino alla chiusura
- * successiva — quasi sempre ce n'e' una, perche' ogni funzione ha il suo JSDoc —
- * divorando il codice in mezzo e nascondendo un uso vero di Phaser. Togliendo
- * prima le righe, quell'apertura sparisce con la riga che la conteneva.
+ * Analizza il file come albero sintattico reale (compiler API di TypeScript),
+ * non come testo. Un commento o una stringa letterale che contengono la parola
+ * "phaser" non sono nodi dell'AST: non serve piu' rimuoverli a mano prima di
+ * cercare, e un `await import('phaser')` dinamico e' un nodo (CallExpression
+ * la cui `expression` e' la keyword `import`) tanto quanto un
+ * `import ... from 'phaser'` statico — una ricerca testuale sulla parola
+ * chiave `from` non lo vedrebbe mai.
  */
-function stripComments(src: string): string {
-    return src.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+function parse(file: string, src: string): ts.SourceFile {
+    return ts.createSourceFile(file, src, ts.ScriptTarget.ES2020, true, ts.ScriptKind.TS);
 }
 
-function relativeImports(src: string): string[] {
+/**
+ * Ogni specifier di modulo importato o ri-esportato, statico o dinamico:
+ * `import x from '...'`, `export { x } from '...'`, `export * from '...'`,
+ * `await import('...')`.
+ */
+function importSpecifiers(sourceFile: ts.SourceFile): string[] {
     const out: string[] = [];
-    const re = /\bfrom\s+['"]([^'"]+)['"]/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(src)) !== null) out.push(m[1] as string);
+    function visit(node: ts.Node): void {
+        if (
+            (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+            node.moduleSpecifier &&
+            ts.isStringLiteral(node.moduleSpecifier)
+        ) {
+            out.push(node.moduleSpecifier.text);
+        }
+        if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+            const [arg] = node.arguments;
+            if (arg && ts.isStringLiteral(arg)) out.push(arg.text);
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
     return out;
+}
+
+/** Vero se il modulo referenzia il namespace globale `Phaser.qualcosa`. */
+function usesPhaserNamespace(sourceFile: ts.SourceFile): boolean {
+    let found = false;
+    function visit(node: ts.Node): void {
+        if (found) return;
+        if (
+            ts.isPropertyAccessExpression(node) &&
+            ts.isIdentifier(node.expression) &&
+            node.expression.text === 'Phaser'
+        ) {
+            found = true;
+            return;
+        }
+        ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    return found;
 }
 
 describe('vincolo architetturale: il core e\' puro', () => {
@@ -50,21 +84,21 @@ describe('vincolo architetturale: il core e\' puro', () => {
         ).toBeGreaterThan(0);
     });
 
-    it('nessun modulo importa Phaser', () => {
+    it('nessun modulo importa Phaser, ne\' staticamente ne\' dinamicamente', () => {
         for (const file of collect(SRC)) {
-            const src = stripComments(readFileSync(file, 'utf8'));
-            expect(/from\s+['"]phaser['"]/.test(src), `${file} importa Phaser`).toBe(false);
-            expect(/\bPhaser\./.test(src), `${file} usa il namespace Phaser`).toBe(false);
+            const sourceFile = parse(file, readFileSync(file, 'utf8'));
+            expect(importSpecifiers(sourceFile).includes('phaser'), `${file} importa Phaser`).toBe(false);
+            expect(usesPhaserNamespace(sourceFile), `${file} usa il namespace Phaser`).toBe(false);
         }
     });
 
     it('ogni import e\' relativo e risolve dentro il core', () => {
         // Il vincolo vero e' sul GRAFO, non sul testo: un modulo che importa un
         // pacchetto esterno passerebbe il test qui sopra e si porterebbe dietro
-        // una dipendenza lo stesso.
+        // una dipendenza lo stesso — statico o dinamico.
         for (const file of collect(SRC)) {
-            const src = stripComments(readFileSync(file, 'utf8'));
-            for (const spec of relativeImports(src)) {
+            const sourceFile = parse(file, readFileSync(file, 'utf8'));
+            for (const spec of importSpecifiers(sourceFile)) {
                 expect(
                     spec.startsWith('.'),
                     `${file} importa "${spec}", che non e' un modulo relativo del core`
