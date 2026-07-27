@@ -98,4 +98,16 @@ describe('project', () => {
         expect(r).toBe(out);
         expect(out).toEqual({ x: 48, y: 24 });
     });
+
+    it('non aliasa l\'oggetto origine del chiamante', () => {
+        // Se le closure catturassero l'oggetto del chiamante invece di una copia,
+        // `origin` resterebbe fermo mentre `project()` cambierebbe risultato — due
+        // fonti di verita' che divergono in silenzio. E un `o.x = 0.5` successivo
+        // aggirerebbe la validazione dell'origine intera senza alcun errore.
+        const o = { x: 400, y: 300 };
+        const t = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 }, { origin: o });
+        o.x = 999999;
+        expect(t.origin).toEqual({ x: 400, y: 300 });
+        expect(t.project(0, 0, 0)).toEqual({ x: 400, y: 300 });
+    });
 });

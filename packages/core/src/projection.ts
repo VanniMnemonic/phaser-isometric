@@ -82,13 +82,22 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         );
     }
 
-    const origin: Point = opts.origin ?? { x: 0, y: 0 };
-    if (!Number.isInteger(origin.x) || !Number.isInteger(origin.y)) {
+    const rawOrigin: Point = opts.origin ?? { x: 0, y: 0 };
+    if (!Number.isInteger(rawOrigin.x) || !Number.isInteger(rawOrigin.y)) {
         throw new IsoConfigError(
-            `l'origine deve avere componenti intere (vale x=${origin.x} y=${origin.y})`,
+            `l'origine deve avere componenti intere (vale x=${rawOrigin.x} y=${rawOrigin.y})`,
             'arrotonda l\'origine: una traslazione frazionaria reintroduce l\'arrotondamento che la convenzione del centro elimina'
         );
     }
+
+    // UNA sola copia congelata, usata sia dalle closure sia dal campo pubblico.
+    // Legare le closure all'oggetto del CHIAMANTE lo lascerebbe mutabile dopo la
+    // costruzione: `p.origin` resterebbe fermo mentre `p.project()` cambierebbe
+    // risultato, e un `o.x = 0.5` successivo aggirerebbe del tutto la validazione
+    // dell'origine intera — che esiste proprio per proteggere la convenzione del
+    // centro. Un Point e' un oggetto che un chiamante Phaser riusa e muta di
+    // frame in frame: trattenerne il riferimento non e' un'ipotesi teorica.
+    const origin = Object.freeze({ ...rawOrigin });
 
     function projectInto(out: Point, gx: number, gy: number, z = 0): Point {
         out.x = a * gx + c * gy + origin.x;
@@ -98,7 +107,7 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
 
     return Object.freeze({
         a, b, c, d, det, elevationStep,
-        origin: Object.freeze({ ...origin }),
+        origin,
         project(gx: number, gy: number, z = 0): Point {
             return projectInto({ x: 0, y: 0 }, gx, gy, z);
         },
