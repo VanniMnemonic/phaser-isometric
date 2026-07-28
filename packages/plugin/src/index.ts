@@ -1,4 +1,4 @@
-import './phaser-augment.d.ts';
+/// <reference path="./phaser-augment.d.ts" />
 
 export { IsoPlugin, isoScenePlugin, ISO_PLUGIN_KEY, ISO_SYS_KEY } from './plugin';
 export type { IsoConfigureOptions, IsoScenePluginOptions, Placeable } from './plugin';

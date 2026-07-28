@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createDepthAssigner, createProjection, cullBounds, DEFAULT_BANDS, IsoConfigError, pick, worldBounds } from '@iso-internal/core';
+import { createDepthAssigner, createProjection, cullBounds, DEFAULT_BANDS, IsoConfigError, pick, tileSizeOf, worldBounds } from '@iso-internal/core';
 import type {
     Band,
     Cell,
@@ -429,14 +429,14 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * projection's own tile size.
      */
     makeDiamondHitArea<T extends DiamondTarget>(target: T, opts: DiamondHitAreaOptions = {}): T {
-        const p = this.projection;
-        // Dal preset diamond: a = tw/2 e d = th/2, quindi il tile si ricava
-        // dalla matrice senza doverlo tenere in un secondo posto che puo'
-        // disallinearsi.
+        // `tileSizeOf` lives in the core: it's the inverse of the diamond
+        // preset's own a = tw/2, d = th/2, and the shell has no maths of its
+        // own — it only calls into the core, same as everywhere else.
+        const tile = tileSizeOf(this.projection);
         return applyDiamondHitArea(
             target,
-            opts.tileWidth ?? p.a * 2,
-            opts.tileHeight ?? p.d * 2
+            opts.tileWidth ?? tile.tileWidth,
+            opts.tileHeight ?? tile.tileHeight
         );
     }
 

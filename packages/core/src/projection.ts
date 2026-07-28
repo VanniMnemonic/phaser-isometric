@@ -151,3 +151,18 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         cornersOf
     });
 }
+
+/**
+ * Recovers the tile size a `Projection` was built with — the inverse of the
+ * diamond preset's own `a = tileWidth/2`, `d = tileHeight/2`.
+ *
+ * Only meaningful for a projection built from the `'diamond'` preset:
+ * `Projection` does not retain `spec.type`, so calling this on a projection
+ * built from a raw `'matrix'` spec returns a number shaped like a tile size
+ * that isn't one. Callers that only ever build diamond projections (the
+ * plugin's `makeDiamondHitArea`, which defaults a hit area's tile size from
+ * the Scene's own projection) are exactly the case this is for.
+ */
+export function tileSizeOf(projection: Pick<Projection, 'a' | 'd'>): { tileWidth: number; tileHeight: number } {
+    return { tileWidth: projection.a * 2, tileHeight: projection.d * 2 };
+}

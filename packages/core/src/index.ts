@@ -9,7 +9,7 @@
  * cell's top face.
  */
 
-export { createProjection } from './projection';
+export { createProjection, tileSizeOf } from './projection';
 export type { Projection } from './projection';
 
 export { createDepthAssigner, DEFAULT_BANDS, DEFAULT_LAYOUT } from './depth';
