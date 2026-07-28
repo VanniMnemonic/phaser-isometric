@@ -97,7 +97,14 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
 - **Il guscio non contiene matematica.** Nessuna formula di proiezione, di depth, di culling
   o di bounds viene riscritta in `packages/plugin`. Se serve un calcolo, si chiama il core; se
   il core non ce l'ha, si aggiunge al core con il suo test in `node`. Un test architetturale
-  lo verifica (Task 10).
+  lo verifica (Task 10): `packages/plugin/test/architecture-no-maths.test.ts`, basato
+  sull'AST, fallisce se un file di `packages/plugin/src/` contiene un operatore binario `*`
+  o `/` fuori da una allowlist di due voci — `camera.ts` (`viewOf`, l'unica eccezione
+  sancita) e `hit-area.ts` (conversione pixel → origine normalizzata). Somma e sottrazione
+  non sono segnale: troppo comuni negli offset. **Quel test non esisteva** ed e' stato
+  aggiunto in esecuzione, dopo che l'implementer del Task 10 ha segnalato che il piano lo
+  prometteva senza specificarlo; alla prima esecuzione ha subito colto una violazione vera
+  (`p.a * 2` in `plugin.ts`, spostata nel core come `tileSizeOf`).
 - **Zero import di Phaser in `packages/core`.** La guardia del Piano 1
   (`packages/core/test/purity.test.ts`, basata sull'AST) resta verde: se un task la fa
   fallire, il task è sbagliato, non la guardia.
@@ -3095,7 +3102,9 @@ git commit -m "Piano 2 Task 10: superficie pubblica, declare global, progetto co
 ```
 
 **Definition of Done:**
-- 1 test nuovo (l'assert di uguaglianza); totale **180**.
+- 6 test nuovi; totale **194**. (1 dal blocco qui sotto — l'assert di uguaglianza — piu' 5
+  aggiunti in review: 3 nel core per `tileSizeOf`, spostato li' dal guscio, e 2 per la
+  **guardia architetturale** che questo task doveva contenere fin dall'inizio.)
 - `pnpm typecheck` copre core, plugin **e** consumer, ed esce 0.
 - La mutazione `declare module` è stata provata e **fa fallire** il typecheck del consumer.
 
@@ -3249,7 +3258,7 @@ soddisfa strutturalmente. `DiamondTarget` (Task 7) nomina i sei membri che
 non `z`, in tutti i task dal 5 in poi.
 
 **Conteggio dei test**, cumulativo: 105 → 120 → 126 → 137 → 148 → 160 → 172 → 181 → 188 →
-189. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
+194. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
 aggiustare il conteggio: nel Piano 1 un conteggio sbagliato nel piano fu segnalato da un
 implementer che si rifiutò di inventare un test, ed era la risposta giusta.
 
