@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin } from './helper';
 import { ISO_PLUGIN_KEY, IsoPlugin, isoScenePlugin } from '../src/plugin';
 import { IsoUsageError } from '../src/errors';
+import { IsoConfigError } from '@iso-internal/core';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
@@ -144,6 +145,41 @@ describe('configurazione', () => {
 
         expect(scene.iso.bands.floor).toBe(0);
         expect(scene.iso.bands.overlay).toBe(6);
+    });
+});
+
+describe('configure() e atomica', () => {
+    it('un depth non valido lancia e lascia il plugin non configurato', async () => {
+        const scene = await bootGame({
+            plugins: { scene: [isoScenePlugin({ mapping: 'iso' })] }
+        }) as SceneWithIso;
+
+        expect(() => scene.iso.configure(DIAMOND, { depth: { layout: { rowStride: -1 } } }))
+            .toThrow(IsoConfigError);
+        expect(scene.iso.isConfigured).toBe(false);
+        expect(() => scene.iso.projection).toThrow(IsoUsageError);
+        expect(() => scene.iso.depth).toThrow(IsoUsageError);
+    });
+
+    it('una riconfigurazione fallita non tocca la coppia proiezione/depth precedente', async () => {
+        const scene = await bootGame({
+            plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] }
+        }) as SceneWithIso;
+
+        const projectionPrima = scene.iso.projection;
+        const depthPrima = scene.iso.depth;
+
+        expect(() => scene.iso.configure(
+            { type: 'diamond', tileWidth: 64, tileHeight: 32 },
+            { depth: { layout: { rowStride: -1 } } }
+        )).toThrow(IsoConfigError);
+
+        // Ne' la proiezione ne' il depth assigner cambiano: se createProjection
+        // fosse assegnata prima che createDepthAssigner sia stata validata, qui
+        // troveremmo la proiezione a 64/32 abbinata al VECCHIO depth assigner.
+        expect(scene.iso.projection).toBe(projectionPrima);
+        expect(scene.iso.depth).toBe(depthPrima);
+        expect(scene.iso.projection.project(1, 0)).toEqual({ x: 48, y: 24 });
     });
 });
 

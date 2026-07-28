@@ -76,8 +76,16 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * well from a Scene's `create()`.
      */
     configure(spec: ProjectionSpec, opts: IsoConfigureOptions = {}): this {
-        this.proiezione = createProjection(spec, opts);
-        this.assegnatore = createDepthAssigner(opts.depth);
+        // Costruire entrambi PRIMA di assegnare: se createDepthAssigner lancia
+        // dopo che createProjection e' gia' andata a segno, un'assegnazione
+        // precoce lascerebbe isConfigured true con una proiezione nuova ma
+        // nessun depth assigner corrispondente (o, su una riconfigurazione,
+        // un depth assigner VECCHIO abbinato a una proiezione nuova). Nessuna
+        // delle due meta' si aggiorna finche' non sono valide entrambe.
+        const proiezione = createProjection(spec, opts);
+        const assegnatore = createDepthAssigner(opts.depth);
+        this.proiezione = proiezione;
+        this.assegnatore = assegnatore;
         return this;
     }
 
