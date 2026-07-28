@@ -157,6 +157,11 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      *
      * Elevation moves the target UP the screen (negative y): a cell at z=2 with
      * the default `elevationStep` sits 48px above the same cell at z=0.
+     *
+     * All-or-nothing: every input is validated (via the depth assigner, which
+     * throws on a non-integer `gx`/`gy` or an out-of-range `band`/`sub`) before
+     * anything is written to `target`. A rejected call leaves `target.x`,
+     * `target.y`, and its depth exactly as they were.
      */
     place<T extends Placeable>(
         target: T,
@@ -166,19 +171,26 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         band: Band = DEFAULT_BANDS.prop,
         sub = 0
     ): T {
-        // `projection` e `depth` lanciano entrambi se il plugin non e' stato
-        // configurato: leggerli per primi rende l'errore quello giusto, invece
-        // di un TypeError su null piu' avanti.
-        const punto = this.projection.projectInto(this.appoggio, gx, gy, z);
+        // Valida PRIMA di mutare: `keyFor` e' l'unico dei due passi che puo'
+        // lanciare (gx/gy non interi, band o sub fuori range — `projectInto`
+        // non controlla nulla). Calcolarlo per primo, in una locale, significa
+        // che una chiamata rifiutata non lascia il target ne' spostato ne'
+        // ridatato: o riesce tutto, o non cambia nulla.
+        const chiave = this.depth.keyFor(gx, gy, band, sub);
 
-        target.x = punto.x;
-        target.y = punto.y;
+        // `projection` e `depth` lanciano entrambi se il plugin non e' stato
+        // configurato, quindi anche in quel caso l'errore arriva qui, prima
+        // che qualunque campo del target venga toccato.
+        this.projection.projectInto(this.appoggio, gx, gy, z);
+
+        target.x = this.appoggio.x;
+        target.y = this.appoggio.y;
 
         // API pubblica, non `_depth`. Misurato: N setDepth alzano un solo
         // booleano, quindi Phaser coalesce comunque in un sort per frame.
         // Scrivere il campo privato risparmierebbe N assegnazioni booleane e
         // costerebbe la compatibilita' con ogni futura versione.
-        target.setDepth(this.depth.keyFor(gx, gy, band, sub));
+        target.setDepth(chiave);
 
         return target;
     }

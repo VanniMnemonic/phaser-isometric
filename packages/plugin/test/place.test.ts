@@ -108,3 +108,59 @@ describe('place()', () => {
         expect(() => scene.iso.place(s, 1.5, 0)).toThrow();
     });
 });
+
+describe('place() e atomico: valida prima di mutare', () => {
+    // In tutti e tre questi test, gx/gy validi da soli farebbero comunque
+    // GIRARE projectInto senza errori (non controlla gx/gy, e non vede affatto
+    // band/sub). Solo `keyFor` puo' rifiutare la chiamata. Se venisse chiamato
+    // DOPO aver scritto target.x/y (il vecchio ordine), il target risulterebbe
+    // spostato con una posizione "buona" ma nessuna depth aggiornata — uno
+    // stato a meta'. Ogni test qui parte da una posizione/depth distinguibile
+    // (non zero) apposta per rendere "intatto" un confronto vero, non un
+    // confronto con il valore di default.
+
+    it('gx frazionario lancia e lascia il target intatto (nessuna scrittura parziale)', async () => {
+        const scene = await conIso();
+        const s = scene.add.sprite(0, 0, '__DEFAULT');
+        s.x = 111;
+        s.y = 222;
+        s.setDepth(333);
+
+        expect(() => scene.iso.place(s, 1.5, 0)).toThrow();
+
+        expect(s.x).toBe(111);
+        expect(s.y).toBe(222);
+        expect(s.depth).toBe(333);
+    });
+
+    it('una band fuori range lancia e lascia il target intatto', async () => {
+        const scene = await conIso();
+        const s = scene.add.sprite(0, 0, '__DEFAULT');
+        s.x = 111;
+        s.y = 222;
+        s.setDepth(333);
+
+        // band = 99 e' fuori da maxBands (16 di default). gx/gy sono validi:
+        // solo keyFor puo' accorgersi che la chiamata e' da rifiutare.
+        expect(() => scene.iso.place(s, 1, 1, 0, 99)).toThrow();
+
+        expect(s.x).toBe(111);
+        expect(s.y).toBe(222);
+        expect(s.depth).toBe(333);
+    });
+
+    it('un sub fuori range lancia e lascia il target intatto', async () => {
+        const scene = await conIso();
+        const s = scene.add.sprite(0, 0, '__DEFAULT');
+        s.x = 111;
+        s.y = 222;
+        s.setDepth(333);
+
+        // sub = 256 e' fuori da subCapacity (256 di default, range 0..255).
+        expect(() => scene.iso.place(s, 1, 1, 0, scene.iso.bands.prop, 256)).toThrow();
+
+        expect(s.x).toBe(111);
+        expect(s.y).toBe(222);
+        expect(s.depth).toBe(333);
+    });
+});
