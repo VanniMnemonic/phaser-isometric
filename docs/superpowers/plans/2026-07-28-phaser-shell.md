@@ -74,8 +74,19 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
 - **Zero import di Phaser in `packages/core`.** La guardia del Piano 1
   (`packages/core/test/purity.test.ts`, basata sull'AST) resta verde: se un task la fa
   fallire, il task è sbagliato, non la guardia.
-- **Il codice spedito parla inglese**: messaggi d'errore e JSDoc esportato in inglese. I
-  commenti interni restano in italiano, come nel core.
+- **Ogni simbolo esportato parla inglese**: messaggi d'errore e JSDoc su qualunque `export`,
+  **inclusi gli helper di test**. I commenti *interni* — quelli che non stanno su un export —
+  restano in italiano, come nel core.
+
+  > **Precisazione decisa in esecuzione (2026-07-28), dopo il Task 1.** La formulazione
+  > originale diceva «il codice spedito parla inglese», e il reviewer del Task 1 ha
+  > giustamente chiesto se `test/helper.ts` sia «spedito». La risposta è che il criterio non
+  > è la spedizione ma l'esportazione: un `export` è una superficie che qualcuno legge da
+  > fuori, e non ha senso che `bootGame` si spieghi in una lingua diversa da `place()`.
+  > **Questa regola vince sui blocchi di codice dei task**: dove un task mostra JSDoc
+  > italiano su un simbolo esportato — succede nel Task 1 e può succedere altrove —
+  > l'implementer lo traduce in inglese invece di trascriverlo, e non è una deviazione dal
+  > piano ma la sua applicazione.
 - **Peer `phaser: "^4.0.0"`.** Vietato usare `Phaser.GameObjects.Layer` e i RenderNode custom
   (superficie cambiata dentro la linea v4 → richiederebbero `^4.2.0`). Se un task ne ha
   bisogno, si ferma e lo segnala: il floor è una promessa pubblica, non un dettaglio.
