@@ -30,6 +30,19 @@ importers:
         specifier: workspace:*
         version: link:../packages/plugin
 
+  examples:
+    dependencies:
+      phaser:
+        specifier: 4.2.1
+        version: 4.2.1
+      phaser-isometric:
+        specifier: workspace:*
+        version: link:../packages/plugin
+    devDependencies:
+      vite:
+        specifier: ^7.3.6
+        version: 7.3.6(@types/node@26.1.1)
+
   packages/core: {}
 
   packages/plugin:

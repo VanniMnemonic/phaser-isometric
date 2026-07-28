@@ -11,3 +11,6 @@ coverage/
 # Worktree isolati creati dall'harness, e scratch della subagent-driven-development
 .claude/worktrees/
 .superpowers/
+
+# Scratch di verifica del Playwright MCP (screenshot, log console, snapshot pagina)
+.playwright-mcp/
