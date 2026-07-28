@@ -48,6 +48,22 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     // chiunque sottoclassi, ed e' la ragione per cui l'opzione e' fissata.
     private proiezione: Projection | null = null;
     private assegnatore: DepthAssigner | null = null;
+    private vivo = false;
+
+    constructor(
+        scene: Phaser.Scene,
+        pluginManager: Phaser.Plugins.PluginManager,
+        pluginKey: string
+    ) {
+        super(scene, pluginManager, pluginKey);
+
+        // La classe base ha gia' registrato `once(BOOT, this.boot, this)`, e
+        // NIENT'ALTRO. START va agganciato qui, con `on` e non `once`: una Scene
+        // si avvia una volta sola, ma puo' essere fermata e riavviata all'infinito.
+        // E' lo schema identico di CameraManager, TweenManager e InputPlugin, che
+        // sono i tre plugin di Phaser che fanno questo lavoro sul serio.
+        scene.sys.events.on(Phaser.Scenes.Events.START, this.start, this);
+    }
 
     /**
      * Bakes a projection into a subclass, so the plugin arrives already
@@ -127,6 +143,70 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
                 'example, are read only by the Loader and are ignored here.'
             );
         }
+
+        this.vivo = true;
+
+        // LA riga che la classe base non scrive. `ScenePlugin#destroy` promette
+        // nel proprio JSDoc di essere chiamato automaticamente alla morte della
+        // Scene: misurato falso. Systems.destroy azzera una lista cablata a mano
+        // che non contiene il nostro mapping, SceneManager chiama solo
+        // sys.destroy(), e PluginManager.destroy itera i plugin GLOBALI. Senza
+        // questa riga il plugin trattiene Scene, Systems e listener per sempre.
+        this.systems?.events.once(Phaser.Scenes.Events.DESTROY, this.destroy, this);
+    }
+
+    /** True between `boot()` and `destroy()`. Never throws. */
+    get isLive(): boolean {
+        return this.vivo;
+    }
+
+    /**
+     * Called on every (re)start of the Scene. Per-run wiring goes here, and
+     * `shutdown()` must remove exactly what this adds.
+     */
+    start(): void {
+        const events = this.systems?.events;
+        if (!events) return;
+
+        // `once`, non `on`: shutdown() lo stacca comunque, ma se una Scene viene
+        // riavviata senza passare da SHUTDOWN — cosa che Phaser non fa, ma che un
+        // test o un plugin di terze parti puo' fare — `once` impedisce comunque
+        // che il conteggio cresca.
+        events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    }
+
+    /**
+     * Called when the Scene stops. Releases per-run state but KEEPS the
+     * configuration: a stopped Scene can be restarted, and re-projecting a world
+     * that never changed would be work for nothing.
+     */
+    shutdown(): void {
+        const events = this.systems?.events;
+        if (!events) return;
+
+        events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    }
+
+    /**
+     * Called when the Scene is destroyed — but only because `boot()` subscribed
+     * to it. Nothing in Phaser calls this on its own.
+     */
+    override destroy(): void {
+        if (!this.vivo) return;   // idempotente: DESTROY puo' arrivare due volte
+        this.vivo = false;
+
+        this.shutdown();
+
+        // Va staccato esplicitamente: e' l'unico listener registrato con `on`,
+        // quindi e' l'unico che sopravvivrebbe.
+        this.systems?.events.off(Phaser.Scenes.Events.START, this.start, this);
+
+        this.proiezione = null;
+        this.assegnatore = null;
+
+        // Azzera scene/systems/game/pluginManager. Va per ultimo: tutto quello
+        // che sta sopra ha bisogno di `this.systems`.
+        super.destroy();
     }
 }
 
