@@ -531,9 +531,15 @@ kernel, componiamo invece di competere.
    → Ogni scelta basata su un JSDoc va ricontrollata sul sorgente.
 6. **Peer floor.** `^4.0.0` è verificato per la superficie
    `BasePlugin`/`ScenePlugin`/`PluginManager`/`GameObjectFactory` (`diff -rq` di `src/plugins/`
-   fra 4.0.0 e 4.2.1: exit 0). Vale **perché** abbiamo escluso `Layer` (4.1.0+) e i RenderNode
+   fra 4.0.0 e 4.2.1: exit 0). Vale **perché** abbiamo escluso `Layer` e i RenderNode
    custom (superficie cambiata dentro la linea v4 → richiederebbero `^4.2.0`). Se una di quelle
    due rientrasse, il floor va alzato.
+
+   > Precisato il 2026-07-28, dopo la ricognizione sul sorgente reale: `Phaser.GameObjects.Layer`
+   > **esiste già in 4.0.0** (`@since 3.50.0`, registrato come `this.add.layer()`). La stesura
+   > precedente lo abbreviava in «`Layer` (4.1.0+)», che si legge come «non esiste prima di
+   > 4.1.0» ed è falso. Quel che 4.1.0 ha aggiunto — e che §5 dice correttamente — è che `Layer`
+   > sia un GameObject a pieno titolo. Il divieto e il floor restano invariati.
 7. **Costi non misurati.** Nessuno ha profilato il costo reale di centinaia di `IsoSprite`, del
    sort dell'input (`indexOf` `O(n)` dentro il comparatore) o del culling. → Il benchmark a 500
    entità di §8 è ciò che trasforma la promessa in un numero.

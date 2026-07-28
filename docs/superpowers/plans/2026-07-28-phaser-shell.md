@@ -79,14 +79,14 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
   (superficie cambiata dentro la linea v4 → richiederebbero `^4.2.0`). Se un task ne ha
   bisogno, si ferma e lo segnala: il floor è una promessa pubblica, non un dettaglio.
 
-  > **Correzione alla spec §5 e §13.6.** La spec motiva il divieto su `Layer` dicendo che «è
-  > diventato un vero GameObject solo in 4.1.0». La ricognizione sul sorgente lo ha smentito
-  > in parte: **`Phaser.GameObjects.Layer` esiste già in 4.0.0**, con gli stessi sei file,
-  > esportato alle stesse righe di `index.js`, registrato come `this.add.layer()` e marcato
-  > `@since 3.50.0`. Quel che 4.1.0 ha davvero aggiunto è che `Layer` sia un GameObject a
-  > pieno titolo. Il divieto resta — non ci serve, e il display list della Scene dà già tutto
-  > — ma la **motivazione** scritta nella spec è sbagliata e va corretta lì. Un vincolo
-  > giustificato male è un vincolo che qualcuno rimuoverà per la ragione sbagliata.
+  > **Precisazione su `Layer`, e correzione alla spec §13.6.** La spec §5 è esatta: `Layer`
+  > «è diventato un vero GameObject solo in 4.1.0». È l'abbreviazione di §13.6 — «abbiamo
+  > escluso `Layer` (4.1.0+)» — a essere fuorviante, perché si legge come «`Layer` non esiste
+  > prima di 4.1.0». **Esiste già in 4.0.0**, con gli stessi sei file, esportato alle stesse
+  > righe di `index.js`, registrato come `this.add.layer()` e marcato `@since 3.50.0`: quel
+  > che 4.1.0 ha aggiunto è che sia un GameObject a pieno titolo. Il divieto resta invariato —
+  > non ci serve, e il display list della Scene dà già tutto. Ma un vincolo abbreviato male è
+  > un vincolo che qualcuno rimuoverà per la ragione sbagliata, quindi §13.6 va riscritta.
 - **Usare l'API pubblica `setDepth()`**, mai scrivere `_depth`. Misurato: `sortChildrenFlag` è
   un singolo booleano, quindi N `setDepth` producono comunque **un solo** sort per frame.
   Non esiste e non va creato un `commitDepths()`.
