@@ -3270,10 +3270,22 @@ soddisfa strutturalmente. `DiamondTarget` (Task 7) nomina i sei membri che
 `applyDiamondHitArea` usa. `HeightSource` viene dal core e non è ridefinito. `elevation`,
 non `z`, in tutti i task dal 5 in poi.
 
-**Conteggio dei test**, cumulativo: 105 → 120 → 126 → 137 → 148 → 160 → 172 → 181 → 188 →
-194. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
-aggiustare il conteggio: nel Piano 1 un conteggio sbagliato nel piano fu segnalato da un
-implementer che si rifiutò di inventare un test, ed era la risposta giusta.
+**Conteggio dei test.** Un implementer che trova un numero diverso da quello previsto dal
+suo task **si fermi e lo segnali** invece di aggiustare il conteggio: nel Piano 1 un
+conteggio sbagliato nel piano fu segnalato da un implementer che si rifiutò di inventare un
+test, ed era la risposta giusta. **Il numero misurato vince sempre su quello scritto**, e uno
+scarto va segnalato, non assorbito.
+
+> **La catena assoluta è stata rimossa in esecuzione (2026-07-28), dopo la review finale.**
+> Qui c'era una serie cumulativa task per task. È stata sbagliata **tre volte su tre**: una
+> volta all'origine (la prosa del Task 2 diceva 12 `it()` dove il suo blocco di codice ne
+> aveva 13), una volta al Task 7 (la catena implicava 14 test nuovi dove la Definition of
+> Done ne dichiarava 10), e infine è rimasta ferma a 194 mentre i due fix round del Task 12
+> portavano il repo a 200 — cioè è finita per essere *stantia proprio nel paragrafo che
+> insegna a non fidarsi dei numeri scritti*. La regola sopra è ciò che ha funzionato davvero:
+> ha fatto fermare quattro implementer diversi, ogni volta a ragione. L'aritmetica no. Ogni
+> task dichiara quanti test aggiunge; il totale lo dice `npx vitest run`, non questo
+> documento.
 
 > **Corretto in esecuzione (2026-07-28), dopo il Task 2.** La serie originale partiva da 117
 > e la catena era sbagliata di uno da lì in poi: il blocco di codice del Task 2 contiene
