@@ -62,6 +62,22 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
 - **Validare alla costruzione, ovunque.** Cinque difetti del Piano 1 erano tutti della stessa
   classe: validazione mancante → risposta sbagliata **in silenzio**. Un input invalido lancia
   con un messaggio che **nomina la correzione**; un percorso caldo non lancia mai.
+- **Validare PRIMA di mutare.** Un metodo che può lanciare non lascia mai dietro di sé uno
+  stato mutato a metà: si calcola e si valida tutto in locali, e si scrive sui campi o sul
+  target solo quando ogni pezzo è riuscito. **Questa regola vince sui blocchi di codice dei
+  task**: dove un task mostra l'ordine opposto, l'implementer riordina, e non è una
+  deviazione dal piano ma la sua applicazione.
+
+  > **Aggiunta in esecuzione (2026-07-28), dopo il Task 4.** La stessa classe di difetto è
+  > emersa due volte in due task, entrambe le volte trascritta alla lettera da un blocco di
+  > codice di questo piano: `configure()` assegnava la proiezione prima di validare
+  > l'assegnatore di depth, e `place()` scriveva `target.x`/`target.y` prima di chiamare
+  > `keyFor()`, che è l'unico punto in cui `gx`/`gy`/`band`/`sub` vengono validati. In
+  > entrambi i casi il riordino **non costa niente** — il calcolo che valida veniva fatto
+  > comunque — e in entrambi i casi il guasto è lo stesso: chi cattura l'eccezione per
+  > saltare un'entità e proseguire il frame si ritrova un oggetto spostato con depth
+  > stantia. Due occorrenze sono un pattern, non una coincidenza: da qui in avanti è un
+  > vincolo, così i task rimanenti non lo ripetono una terza volta.
 - **pnpm 11 nega gli script di install per default**: serve `allowBuilds` in
   `pnpm-workspace.yaml` (il monorepo ce l'ha già per `esbuild`; `examples/` lo erediterà).
 
