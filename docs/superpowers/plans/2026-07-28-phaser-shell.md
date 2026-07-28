@@ -3152,6 +3152,23 @@ depth → Task 4; input → Task 7; camera → Task 6; introspezione → Task 9;
 Tappa 3 (§8, terzo anello): → Task 12 e 13. Fuori perimetro **dichiarato**: il sottopath
 `phaser-isometric/debug` (§5.6) è tappa 5 della spec, quindi Piano 3, non qui.
 
+**Due scostamenti dalla spec, entrambi deliberati.**
+
+1. **In più: `isoScenePlugin()`** (Task 2). La spec mostra la entry di config scritta a mano.
+   La ricognizione ha però misurato che l'`@example` **ufficiale** di Phaser produce un
+   plugin montato su `scene["null"]` senza un warning, perché `systemKey`/`sceneKey` sono
+   campi morti su quel percorso. Una factory che non può generare la forma sbagliata costa
+   dieci righe e toglie di mezzo il difetto di installazione più probabile. Non è
+   allargamento di perimetro: è una difesa contro un difetto misurato dopo la stesura della
+   spec.
+2. **In meno: nessun canale di configurazione via `sys.settings`.** La ricognizione ha
+   segnalato che chiavi arbitrarie del config di Scene sopravvivono in `sys.settings` e sono
+   leggibili in `boot()` con `GetFastValue` — è così che `CameraManager` legge
+   `sys.settings.cameras`, ed è il percorso più idiomatico di Phaser. Sarebbe un **terzo**
+   canale accanto a `withDefaults()` e `configure()`, cioè una terza cosa da documentare, da
+   testare e da tenere allineata. La spec ne ha decisi due; restano due. Da valutare per la
+   v2, quando ci sarà evidenza d'uso reale che serva.
+
 **Scansione dei segnaposto.** Nessun «TBD», nessun «simile al Task N», nessuno step di codice
 senza codice. Il Task 9 e il Task 11 descrivono i test per elenco invece che per intero: è
 deliberato e circoscritto — sono gli unici due dove la forma è già fissata dai task
