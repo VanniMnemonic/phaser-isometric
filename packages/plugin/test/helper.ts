@@ -1,28 +1,28 @@
 import PhaserNS from 'phaser';
 
 /**
- * Il namespace Phaser, importato una volta sola.
+ * The Phaser namespace, imported once.
  *
- * Misurato su 4.2.1: il default export del bundle ESM E' gia' il namespace
- * (`Phaser.Game` e' una funzione, `Phaser.default` e' undefined), quindi non
- * serve alcuna normalizzazione `?? .default`.
+ * Measured on 4.2.1: the ESM bundle's default export IS already the
+ * namespace (`Phaser.Game` is a function, `Phaser.default` is undefined),
+ * so no `?? .default` normalization is needed.
  */
 export const Phaser = PhaserNS;
 
 let currentGame: Phaser.Game | null = null;
 
 /**
- * Avvia un Game headless e risolve con la Scene attiva, una volta che
- * `create()` e' stato chiamato.
+ * Boots a headless Game and resolves with the active Scene once `create()`
+ * has been called.
  *
- * Idioma copiato da `phaser/tests/helper.js`: HEADLESS, niente banner,
- * niente audio. `config` viene fuso sopra, quindi un test puo' aggiungere
- * `plugins`, `render`, o sostituire `scene`.
+ * Idiom copied from `phaser/tests/helper.js`: HEADLESS, no banner, no audio.
+ * `config` is merged on top, so a test can add `plugins`, `render`, or
+ * replace `scene`.
  *
- * Il timeout esiste perche' il modo tipico di sbagliare qui non e'
- * un'eccezione: e' un boot che non finisce mai (vedi il mock di Image nel
- * setup vendorizzato). Una Promise appesa farebbe scadere il test con un
- * messaggio che non dice niente; questo dice cosa e' successo.
+ * The timeout exists because the typical way to get this wrong isn't an
+ * exception: it's a boot that never finishes (see the Image mock in the
+ * vendored setup). A hanging Promise would time the test out with a
+ * message that says nothing; this one says what happened.
  */
 export function bootGame(config: Record<string, unknown> = {}): Promise<Phaser.Scene> {
     destroyGame();
@@ -48,8 +48,8 @@ export function bootGame(config: Record<string, unknown> = {}): Promise<Phaser.S
     });
 }
 
-/** Distrugge il Game corrente. Idempotente: chiamarlo senza un gioco attivo
- *  non fa niente, cosi' un `afterEach` incondizionato e' sicuro. */
+/** Destroys the current Game. Idempotent: calling it with no active game
+ *  is a no-op, so an unconditional `afterEach` is safe. */
 export function destroyGame(): void {
     if (!currentGame) return;
     try { currentGame.destroy(true); } catch { /* un boot fallito puo' lasciare uno stato parziale */ }
@@ -57,16 +57,16 @@ export function destroyGame(): void {
 }
 
 /**
- * Dimentica uno scene plugin registrato, cosi' il prossimo Game riparte pulito.
+ * Forgets a registered scene plugin, so the next Game starts clean.
  *
- * SERVE DAVVERO, non e' igiene di lusso. `PluginCache` e' un singleton di
- * MODULO, e `game.destroy()` lo svuota solo se `game.noReturn` e' vero
- * (PluginManager.destroy → destroyCorePlugins). Quindi, dopo il primo Game,
- * `installScenePlugin` trova `PluginCache.hasCore(key) === true` e SALTA la
- * ri-registrazione: il secondo Game eredita in silenzio il `mapping` del
- * primo. Un test che installa lo stesso plugin con un mapping diverso
- * fallirebbe per una ragione che non ha niente a che vedere con cio' che sta
- * verificando.
+ * THIS IS ACTUALLY NEEDED, not luxury hygiene. `PluginCache` is a
+ * MODULE-level singleton, and `game.destroy()` only empties it if
+ * `game.noReturn` is true (PluginManager.destroy → destroyCorePlugins). So,
+ * after the first Game, `installScenePlugin` finds
+ * `PluginCache.hasCore(key) === true` and SKIPS re-registration: the second
+ * Game silently inherits the first one's `mapping`. A test that installs the
+ * same plugin with a different mapping would fail for a reason that has
+ * nothing to do with what it's actually verifying.
  */
 export function forgetScenePlugin(key: string): void {
     Phaser.Plugins.PluginCache.remove(key);
