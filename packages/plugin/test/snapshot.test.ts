@@ -32,7 +32,15 @@ describe('snapshot() — round-trip JSON', () => {
 
         let json = '';
         expect(() => { json = JSON.stringify(snap); }).not.toThrow();
-        expect(JSON.parse(json)).toEqual(snap);
+        // toStrictEqual, non toEqual: `toEqual` considera un'ISTANZA DI CLASSE
+        // uguale al proprio round-trip JSON (e `{b: undefined}` uguale a `{}`),
+        // quindi un `view: camera.worldView` — un Phaser.Geom.Rectangle, i cui
+        // campi propri sono tutti serializzabili — o un Phaser.Math.Vector2
+        // passerebbero indisturbati proprio in "il test che prende un
+        // riferimento a Phaser sfuggito". toStrictEqual confronta anche il
+        // prototipo, che e' cio' che distingue un oggetto nudo da un oggetto
+        // Phaser con gli stessi campi.
+        expect(JSON.parse(json)).toStrictEqual(snap);
 
         // La guardia che il round-trip da solo non darebbe: JSON.stringify(-0)
         // e' "0", quindi un -0 nascosto in un campo calcolato per sottrazione

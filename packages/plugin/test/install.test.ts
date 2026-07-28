@@ -131,6 +131,32 @@ describe('configurazione', () => {
         }
     });
 
+    it('il messaggio nomina il sostantivo chiesto, non sempre `projection`', async () => {
+        const scene = await bootGame({
+            plugins: { scene: [isoScenePlugin({ mapping: 'iso' })] }
+        });
+
+        // Leggere `depth` su un plugin non configurato non e' "non c'e' la
+        // proiezione": e' "non c'e' il depth assigner". In un progetto la cui
+        // disciplina sugli errori e' che il messaggio nomini la correzione,
+        // mandare il lettore a cercare la proiezione e' mandarlo altrove.
+        try {
+            scene.iso.depth;
+            expect.unreachable('avrebbe dovuto lanciare');
+        } catch (e) {
+            const msg = (e as Error).message;
+            expect(msg).toContain('depth');
+            expect(msg).not.toContain('no projection');
+        }
+
+        try {
+            scene.iso.projection;
+            expect.unreachable('avrebbe dovuto lanciare');
+        } catch (e) {
+            expect((e as Error).message).toContain('no projection');
+        }
+    });
+
     it('bands espone le sette bande del core', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] }
@@ -189,6 +215,64 @@ describe('la factory di config', () => {
     it('senza projection restituisce la classe nuda, non una sottoclasse', () => {
         expect(isoScenePlugin().plugin).toBe(IsoPlugin);
         expect(isoScenePlugin({ projection: DIAMOND }).plugin).not.toBe(IsoPlugin);
+    });
+});
+
+describe('un secondo Game eredita in silenzio il plugin del primo', () => {
+    // installScenePlugin registra nella PluginCache solo `if
+    // (!PluginCache.hasCore(key))`, e l'avviso di duplicato di Phaser scatta
+    // solo DENTRO lo stesso PluginManager: un secondo Game non lo fa mai
+    // scattare. addToScene istanzia poi da PluginCache.getCore(key), e la voce
+    // di config del Game corrente non viene mai letta. La cache e' un
+    // singleton di modulo, svuotato solo da game.destroy(removeCanvas, true).
+    // Casi reali: HMR di Vite, un game ricreato al cambio livello, due canvas
+    // sulla stessa pagina.
+
+    it('la stessa configurazione installata due volte non avvisa', async () => {
+        await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        // La cache tiene ancora la entry del primo Game: destroyGame() usa
+        // game.destroy(true), che NON la svuota.
+        isoScenePlugin({ projection: DIAMOND });
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    it('una proiezione diversa avvisa, e l avviso nomina entrambe le vie d uscita', async () => {
+        await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        isoScenePlugin({ projection: { type: 'diamond', tileWidth: 64, tileHeight: 32 } });
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const msg = String(warn.mock.calls[0]?.[0]);
+        expect(msg).toContain('game.destroy(true, true)');
+        expect(msg).toContain(`PluginCache.remove('${ISO_PLUGIN_KEY}')`);
+        warn.mockRestore();
+    });
+
+    it('un mapping diverso avvisa anche a parita di proiezione', async () => {
+        await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        isoScenePlugin({ mapping: 'griglia', projection: DIAMOND });
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        // Il mapping GIA' in cache, non quello richiesto: e' quello che il
+        // secondo Game si ritrovera' davvero.
+        expect(String(warn.mock.calls[0]?.[0])).toContain('"iso"');
+        warn.mockRestore();
+    });
+
+    it('a cache vuota non avvisa mai', () => {
+        // forgetScenePlugin() dell afterEach precedente ha gia' svuotato: e' lo
+        // stato del primissimo Game di una pagina, che non deve avvisare.
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        isoScenePlugin({ projection: DIAMOND });
+        isoScenePlugin({ mapping: 'griglia', projection: DIAMOND });
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
     });
 });
 

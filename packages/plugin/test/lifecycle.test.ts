@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
-import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
+import { ISO_PLUGIN_KEY, IsoPlugin, isoScenePlugin } from '../src/plugin';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
@@ -22,7 +22,16 @@ describe('il cablaggio del ciclo di vita', () => {
         });
 
         expect(scene.iso.isLive).toBe(true);
-        expect(listenerCount(scene, Phaser.Scenes.Events.DESTROY)).toBeGreaterThan(0);
+
+        // IDENTITA', non popolazione. I plugin di Scene predefiniti di Phaser —
+        // CameraManager, DisplayList, UpdateList, InputPlugin e altri — fanno
+        // ognuno `once(DESTROY, this.destroy, this)` nel proprio boot(), e
+        // impostare `plugins.scene` NON sostituisce `defaultPlugins`: il
+        // conteggio e' gia' >= 4 prima che IsoPlugin.boot() giri. Un
+        // `toBeGreaterThan(0)` resterebbe verde anche cancellando la riga che
+        // questo test esiste per fissare.
+        expect(scene.sys.events.listeners(Phaser.Scenes.Events.DESTROY))
+            .toContain(IsoPlugin.prototype.destroy);
     });
 
     it('destroy() viene eseguito quando la Scene muore', async () => {

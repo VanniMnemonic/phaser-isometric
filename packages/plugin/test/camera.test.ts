@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
 import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
 import { viewOf } from '../src/camera';
+import { IsoConfigError } from '@iso-internal/core';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
@@ -124,6 +125,35 @@ describe('follow()', () => {
         expect(proxy?.x).not.toBe(scene.iso.projection.project(9, 0).x);
     });
 
+    it('inoltra lerp e offset a startFollow nell ordine giusto', async () => {
+        const scene = await conIso();
+        const camera = scene.cameras.main;
+
+        // Phaser: startFollow(target, roundPixels, lerpX, lerpY, offsetX, offsetY).
+        // Nessun altro test passa `opts`, quindi senza queste asserzioni lerp e
+        // offset potrebbero essere trasposti o persi del tutto e tutto
+        // resterebbe verde. Valori asimmetrici apposta: offsetX = offsetY
+        // renderebbe indistinguibile una trasposizione.
+        scene.iso.follow({ gx: 0, gy: 0 }, { lerp: 0.5, offsetX: 10, offsetY: -20 });
+
+        expect(camera.lerp.x).toBe(0.5);
+        expect(camera.lerp.y).toBe(0.5);
+        expect(camera.followOffset.x).toBe(10);
+        expect(camera.followOffset.y).toBe(-20);
+    });
+
+    it('senza opts usa i default: lerp 1, nessun offset', async () => {
+        const scene = await conIso();
+        const camera = scene.cameras.main;
+
+        scene.iso.follow({ gx: 0, gy: 0 });
+
+        expect(camera.lerp.x).toBe(1);
+        expect(camera.lerp.y).toBe(1);
+        expect(camera.followOffset.x).toBe(0);
+        expect(camera.followOffset.y).toBe(0);
+    });
+
     it('smette di aggiornare dopo lo shutdown della Scene', async () => {
         const scene = await conIso();
         scene.iso.follow({ gx: 0, gy: 0 });
@@ -155,6 +185,53 @@ describe('cameraBounds()', () => {
         expect(b.y).toBe(-24);
         expect(b.width).toBe(960);
         expect(b.height).toBe(480);
+    });
+
+    it('maxElevation alza il tetto dei bounds, e solo quello', async () => {
+        const scene = await conIso();
+
+        // Finora questa opzione era esercitata solo dal gate browser. Due quote
+        // sul preset diamond 96x48 (elevationStep = th/2 = 24) sono 48 px di
+        // cielo in piu': il rettangolo cresce verso l'ALTO, quindi y scende e
+        // height sale della stessa quantita'. x e width non si muovono — se
+        // maxElevation finisse sull'asse sbagliato, sarebbero loro a cambiare.
+        scene.iso.cameraBounds(10, 10, { maxElevation: 2 });
+
+        const b = scene.cameras.main.getBounds();
+        expect(b.x).toBe(-480);
+        expect(b.y).toBe(-72);
+        expect(b.width).toBe(960);
+        expect(b.height).toBe(528);
+    });
+
+    it('una griglia degenere lancia invece di inchiodare la camera sull origine', async () => {
+        const scene = await conIso();
+        scene.iso.cameraBounds(10, 10);
+        const prima = scene.cameras.main.getBounds();
+
+        // Il percorso reale: cameraBounds(map.width, map.height) chiamata prima
+        // che la tilemap abbia finito di caricare. worldBounds restituisce
+        // {0,0,0,0} per convenzione e setBounds lo applicherebbe subito: la
+        // camera non si muoverebbe piu', senza niente da cercare.
+        expect(() => scene.iso.cameraBounds(0, 0)).toThrow(IsoConfigError);
+        expect(() => scene.iso.cameraBounds(0, 10)).toThrow(/pin the camera at the origin/);
+        expect(() => scene.iso.cameraBounds(10, -3)).toThrow(/pin the camera at the origin/);
+
+        // E non ha scritto niente: i bounds precedenti sono intatti.
+        const dopo = scene.cameras.main.getBounds();
+        expect({ x: dopo.x, y: dopo.y, width: dopo.width, height: dopo.height })
+            .toEqual({ x: prima.x, y: prima.y, width: prima.width, height: prima.height });
+    });
+
+    it('una dimensione NaN resta un errore di finitezza, non di griglia degenere', async () => {
+        const scene = await conIso();
+
+        // `NaN <= 0` e' falso: NaN non entra nel ramo della griglia degenere e
+        // cade su worldBounds, che e' il posto giusto per rifiutarlo. Il
+        // messaggio deve restare quello sulla finitezza, altrimenti il lettore
+        // va a cercare le dimensioni della mappa invece del NaN che le produce.
+        expect(() => scene.iso.cameraBounds(Number.NaN, 10)).toThrow(/finite/);
+        expect(() => scene.iso.cameraBounds(Number.NaN, 10)).not.toThrow(/pin the camera/);
     });
 });
 

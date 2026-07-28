@@ -12,6 +12,26 @@ function conIso(): Promise<Phaser.Scene> {
     return bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
 }
 
+/** Ogni nome che sulla catena di prototipi e' un accessor (get e/o set). */
+function accessoriDellaCatena(oggetto: object): string[] {
+    const trovati = new Set<string>();
+    let proto: object | null = Object.getPrototypeOf(oggetto);
+    while (proto && proto !== Object.prototype) {
+        for (const nome of Object.getOwnPropertyNames(proto)) {
+            const d = Object.getOwnPropertyDescriptor(proto, nome);
+            if (d && (d.get || d.set)) trovati.add(nome);
+        }
+        proto = Object.getPrototypeOf(proto);
+    }
+    return [...trovati];
+}
+
+/** Quelli fra quegli accessor che l'istanza copre con una proprieta' PROPRIA. */
+function accessoriShadowati(oggetto: object): string[] {
+    return accessoriDellaCatena(oggetto)
+        .filter(nome => Object.prototype.hasOwnProperty.call(oggetto, nome));
+}
+
 describe('la factory', () => {
     it('rende this.add.isoSprite chiamabile', async () => {
         const scene = await conIso();
@@ -124,6 +144,31 @@ describe('IsoSprite', () => {
         // quello. Controlliamo entrambi.
         expect(s.depth).toBe(42);
         expect((s as unknown as { _depth: number })._depth).toBe(42);
+    });
+
+    it('nessun campo di IsoSprite shadowa un accessor di Phaser', async () => {
+        const scene = await conIso();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        // `useDefineForClassFields: false` (tsconfig.base.json) e' cio' che
+        // impedisce a un campo di classe di emettere defineProperty e coprire
+        // un accessor della catena di prototipi — l'errore in cui il valore si
+        // rilegge giusto mentre il renderer continua a ordinare su un `_depth`
+        // che non si e' mai mosso. Il rischio oggi e' LATENTE (nessun campo
+        // attuale collide, e `declare depth` non emette nulla sotto nessuna
+        // delle due impostazioni): questa guardia esiste per il PROSSIMO campo
+        // che qualcuno aggiunge, e non dipende da come e' impostato il flag.
+        expect(accessoriShadowati(s)).toEqual([]);
+
+        // Che la lista non sia vuota per il motivo sbagliato: se la catena non
+        // esponesse piu' alcun accessor, l'assert sopra sarebbe verde a vuoto.
+        // Misurato su Phaser 4.2.1: `depth`, `scale`, `angle`, `rotation`,
+        // `visible`, `alpha` sono accessor sul prototipo; `x`, `y`, `z` NO —
+        // sono proprieta' DATI, che il costruttore di Sprite scrive come
+        // proprieta' proprie dell'istanza, quindi non possono comparire qui.
+        expect(accessoriDellaCatena(s)).toEqual(
+            expect.arrayContaining(['depth', 'scale', 'angle', 'rotation'])
+        );
     });
 
     it('setCell restituisce this', async () => {

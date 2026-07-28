@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin } from './helper';
 import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
 import { IsoUsageError } from '../src/errors';
+import { IsoConfigError } from '@iso-internal/core';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
@@ -154,5 +155,56 @@ describe('place() e atomico: valida prima di mutare', () => {
         expect(s.x).toBe(111);
         expect(s.y).toBe(222);
         expect(s.depth).toBe(333);
+    });
+
+    it('un z non finito lancia e lascia il target intatto', async () => {
+        const scene = await conIso();
+        const s = scene.add.sprite(0, 0, '__DEFAULT');
+        s.x = 111;
+        s.y = 222;
+        s.setDepth(333);
+
+        // z e' l'UNICO input che keyFor non vede: la depth non dipende
+        // dall'elevazione. Senza un controllo dedicato, questa chiamata
+        // scriverebbe target.y = NaN accanto a una depth perfettamente valida —
+        // lo sprite sparisce, nessun errore, nessun log.
+        expect(() => scene.iso.place(s, 1, 1, Number.NaN)).toThrow(IsoConfigError);
+        expect(() => scene.iso.place(s, 1, 1, Number.NaN)).toThrow(/`z`/);
+        expect(() => scene.iso.place(s, 1, 1, Number.POSITIVE_INFINITY)).toThrow(/`z`/);
+
+        expect(s.x).toBe(111);
+        expect(s.y).toBe(222);
+        expect(s.depth).toBe(333);
+    });
+
+    it('su un IsoSprite un z non finito non tocca nemmeno la cella', async () => {
+        const scene = await conIso();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+        // Stato di partenza distinguibile su ogni campo, cosi' "intatto" e' un
+        // confronto vero e non un confronto con il default.
+        s.setCell(2, 3, 5, scene.iso.bands.hero, 7);
+
+        const gx = s.gx, gy = s.gy, elevation = s.elevation, band = s.band, sub = s.sub;
+        const x = s.x, y = s.y, depth = s.depth;
+
+        // setCell scrive elevation DOPO una place() riuscita: senza la guardia
+        // su z, questa chiamata avvelenerebbe il campo per sempre e ogni
+        // setCell(gx, gy) successiva riuserebbe quel NaN.
+        expect(() => s.setCell(9, 9, Number.NaN)).toThrow(/`z`/);
+
+        expect(s.gx).toBe(gx);
+        expect(s.gy).toBe(gy);
+        expect(s.elevation).toBe(elevation);
+        expect(s.band).toBe(band);
+        expect(s.sub).toBe(sub);
+        expect(s.x).toBe(x);
+        expect(s.y).toBe(y);
+        expect(s.depth).toBe(depth);
+
+        // E la sprite resta usabile: e' cio' che "avvelenata per sempre"
+        // significa davvero, e che il confronto campo per campo da solo non
+        // dimostra.
+        s.setCell(1, 1);
+        expect(s.y).toBe(scene.iso.projection.project(1, 1, 5).y);
     });
 });

@@ -24,20 +24,25 @@ import { snapshotOf } from './snapshot';
 import type { IsoSnapshot } from './snapshot';
 
 /**
- * Guards a numeric input to `follow()`. `projectInto` validates nothing (by
- * design — it is a hot path), so this is the only place that stands between
- * a caller's `NaN`/`Infinity` and a proxy that is silently poisoned forever:
- * Phaser's own `startFollow`/`Clamp` never throw either, so without this
- * check the camera would just stop moving, with no error and no log.
+ * Guards a numeric input that no other validation sees. `projectInto`
+ * validates nothing (by design — it is a hot path), so this is the only place
+ * that stands between a caller's `NaN`/`Infinity` and a target that is
+ * silently poisoned: Phaser never throws on a `NaN` position either, so
+ * without this check the sprite would just vanish, or the camera would just
+ * stop moving, with no error and no log.
+ *
+ * `api` is named in the message because the same guard now serves two entry
+ * points, and "which call did this come from" is the first thing the reader
+ * needs.
  *
  * `IsoConfigError`, not `IsoUsageError`: this is a bad VALUE, not a call made
  * in an order that cannot work — the same distinction the core already
  * draws for every constructor argument it validates.
  */
-function requireFiniteFollowInput(value: number, name: string): void {
+function requireFiniteInput(value: number, name: string, api: string): void {
     if (!Number.isFinite(value)) {
         throw new IsoConfigError(
-            `follow()'s \`${name}\` is not a finite number (got ${String(value)})`,
+            `${api}'s \`${name}\` is not a finite number (got ${String(value)})`,
             `pass a finite number for ${name}`
         );
     }
@@ -66,6 +71,70 @@ export const ISO_PLUGIN_KEY = 'IsoPlugin';
  */
 export const ISO_SYS_KEY = '__phaserIsometric';
 
+// La firma della configurazione cotta dentro una sottoclasse da withDefaults.
+// Serve a distinguere "la stessa configurazione installata due volte" da "un
+// secondo Game che ne chiede una DIVERSA": withDefaults fabbrica una classe
+// nuova a ogni chiamata, quindi il confronto per identita' direbbe "diversa"
+// anche per due installazioni identiche. `Symbol.for` e non un Symbol privato:
+// se due copie di questo modulo finiscono nello stesso bundle, la firma resta
+// leggibile attraverso il confine.
+const FIRMA_DEFAULTS = Symbol.for('phaser-isometric.defaults');
+
+// JSON e non identita', per la ragione sopra. Una `strategy` di depth (una
+// funzione) cade fuori dal JSON: al peggio due configurazioni che differiscono
+// SOLO per quella non vengono distinte e l'avviso non parte — mai il contrario,
+// cioe' mai un falso allarme.
+function firmaDi(spec: ProjectionSpec, opts: IsoConfigureOptions): string {
+    return JSON.stringify([spec, opts]);
+}
+
+function firmaDelPlugin(plugin: unknown): string {
+    const firma = (plugin as Record<symbol, unknown> | null | undefined)?.[FIRMA_DEFAULTS];
+    return typeof firma === 'string' ? firma : '';
+}
+
+/**
+ * Warns when a second `Phaser.Game` would silently inherit the plugin the
+ * FIRST one installed.
+ *
+ * `PluginManager.installScenePlugin` registers into `PluginCache` only
+ * `if (!PluginCache.hasCore(key))`, and Phaser's own duplicate warning fires
+ * only within a single `PluginManager`, so a second Game never trips it.
+ * `addToScene` then instantiates from `PluginCache.getCore(key)` — the new
+ * Game's own config entry is never consulted. A second Game asking for a
+ * different projection, or a different `mapping`, therefore gets the first
+ * one's: the whole world projects with the wrong tile size, and nothing is
+ * logged. `PluginCache` is a module-level singleton, emptied only by
+ * `game.destroy(removeCanvas, true)`.
+ *
+ * Reachable outside tests: Vite HMR, a game recreated on level change, two
+ * canvases on one page.
+ *
+ * A warning, never a throw — a second Game is legitimate, and this must not
+ * break it.
+ */
+function avvisaSeLaCacheHaAltro(mapping: string, plugin: unknown): void {
+    // `getCore` e non `hasCore`: e' la STESSA lettura che PluginManager fa per
+    // istanziare (`corePlugins[key]`, undefined a chiave assente), quindi un
+    // controllo solo, e su cio' che conta davvero. Un `hasCore` in piu' sarebbe
+    // un ramo che nessun test puo' distinguere da questo.
+    const entry = Phaser.Plugins.PluginCache.getCore(ISO_PLUGIN_KEY) as
+        { mapping?: unknown; plugin?: unknown } | null | undefined;
+    if (!entry) return;
+
+    if (entry.mapping === mapping && firmaDelPlugin(entry.plugin) === firmaDelPlugin(plugin)) return;
+
+    console.warn(
+        `[phaser-isometric] '${ISO_PLUGIN_KEY}' is already registered in Phaser's PluginCache with a ` +
+        `different configuration (its mapping is ${JSON.stringify(entry.mapping)}), and PluginCache is a ` +
+        'module-level singleton that survives game.destroy(). This entry will be IGNORED: a second Game ' +
+        'reuses the first one\'s plugin class and mapping, so the world would project with the wrong tile ' +
+        'size and nothing would be logged. Fix: destroy the previous game with game.destroy(true, true) ' +
+        '(the SECOND argument is the one that empties the cache), or call ' +
+        `Phaser.Plugins.PluginCache.remove('${ISO_PLUGIN_KEY}') before installing this one.`
+    );
+}
+
 export interface IsoConfigureOptions extends ProjectionOptions {
     /** Options forwarded to the core's depth assigner. */
     depth?: DepthAssignerOptions;
@@ -80,7 +149,10 @@ export interface IsoScenePluginOptions extends IsoConfigureOptions {
 
 function notConfigured(what: string): IsoUsageError {
     return new IsoUsageError(
-        `the isometric plugin has no projection yet, so \`${what}\` cannot be read`,
+        // Il sostantivo segue `what`: dire "has no projection" mentre il lettore
+        // ha chiesto `depth` gli fa cercare la cosa sbagliata, in un progetto la
+        // cui disciplina sugli errori e' che il messaggio nomini la correzione.
+        `the isometric plugin has no ${what} yet, so \`this.iso.${what}\` cannot be read`,
         'call this.iso.configure(...) from your Scene\'s create(), or install it already configured with ' +
         'isoScenePlugin({ projection: { type: "diamond", tileWidth: 96, tileHeight: 48 } }) ' +
         '(equivalent to IsoPlugin.withDefaults(...) under the hood)'
@@ -164,7 +236,7 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * Without this, a game-wide default projection would have no way to travel.
      */
     static withDefaults(spec: ProjectionSpec, opts: IsoConfigureOptions = {}): typeof IsoPlugin {
-        return class IsoPluginWithDefaults extends IsoPlugin {
+        const sottoclasse = class IsoPluginWithDefaults extends IsoPlugin {
             constructor(
                 scene: Phaser.Scene,
                 pluginManager: Phaser.Plugins.PluginManager,
@@ -174,6 +246,13 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
                 this.configure(spec, opts);
             }
         };
+
+        // Marchia la classe con cio' che le e' stato cotto dentro, cosi' che una
+        // seconda installazione possa dire se e' la STESSA configurazione o una
+        // diversa (vedi avvisaSeLaCacheHaAltro).
+        (sottoclasse as unknown as Record<symbol, unknown>)[FIRMA_DEFAULTS] = firmaDi(spec, opts);
+
+        return sottoclasse;
     }
 
     /**
@@ -227,10 +306,17 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * Elevation moves the target UP the screen (negative y): a cell at z=2 with
      * the default `elevationStep` sits 48px above the same cell at z=0.
      *
-     * All-or-nothing: every input is validated (via the depth assigner, which
-     * throws on a non-integer `gx`/`gy` or an out-of-range `band`/`sub`) before
-     * anything is written to `target`. A rejected call leaves `target.x`,
-     * `target.y`, and its depth exactly as they were.
+     * All-or-nothing: every input is validated — `gx`/`gy`/`band`/`sub` by the
+     * depth assigner, which throws on a non-integer cell or an out-of-range
+     * band, and `z` by a finiteness check of its own — before anything is
+     * written to `target`. A rejected call leaves `target.x`, `target.y`, and
+     * its depth exactly as they were.
+     *
+     * `z` needs that separate check because it is the one input the depth key
+     * does not depend on: without it a `NaN` elevation writes a `NaN` `y`
+     * alongside a perfectly valid depth, the sprite vanishes, and nothing is
+     * thrown or logged. On an `IsoSprite` the damage is permanent, since
+     * `setCell` remembers the elevation it was last given.
      */
     place<T extends Placeable>(
         target: T,
@@ -246,6 +332,14 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // che una chiamata rifiutata non lascia il target ne' spostato ne'
         // ridatato: o riesce tutto, o non cambia nulla.
         const chiave = this.depth.keyFor(gx, gy, band, sub);
+
+        // Dopo keyFor, non prima: se il plugin non e' configurato, quello e'
+        // l'errore da riportare per primo. `z` e' l'unico input che keyFor non
+        // vede — la depth non dipende dall'elevazione — quindi senza questo
+        // controllo un NaN scivolerebbe dritto in target.y accanto a una depth
+        // valida. Un Number.isFinite per chiamata, su un placeCost misurato di
+        // 0.015-0.052 ms ogni 500 place(): rumore.
+        requireFiniteInput(z, 'z', 'place()');
 
         // `projection` e `depth` lanciano entrambi se il plugin non e' stato
         // configurato, quindi anche in quel caso l'errore arriva qui, prima
@@ -295,10 +389,10 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // qualunque stato. Una follow() rifiutata non deve lasciare
         // `inseguito` assegnato ne' il proxy proiettato a meta'.
         const proiezione = this.projection;
-        requireFiniteFollowInput(target.gx, 'gx');
-        requireFiniteFollowInput(target.gy, 'gy');
-        requireFiniteFollowInput(target.z ?? 0, 'z');
-        requireFiniteFollowInput(opts.lerp ?? 1, 'lerp');
+        requireFiniteInput(target.gx, 'gx', 'follow()');
+        requireFiniteInput(target.gy, 'gy', 'follow()');
+        requireFiniteInput(target.z ?? 0, 'z', 'follow()');
+        requireFiniteInput(opts.lerp ?? 1, 'lerp', 'follow()');
         const roundPixels = camera.roundPixels;
 
         this.inseguito = target;
@@ -346,6 +440,15 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * `map.widthInPixels` is orthogonal, which is why
      * `camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels)` is wrong
      * on an isometric map.
+     *
+     * Throws on a grid with a non-positive width or height. The core returns
+     * `{0,0,0,0}` there — a documented mathematical convention — but
+     * `setBounds` would apply it and clamp the camera onto the origin
+     * immediately, leaving a camera that will not move and nothing to search
+     * for. The reachable path is ordinary: `cameraBounds(map.width,
+     * map.height)` called before the tilemap finished loading. This is a setup
+     * call, made once per level and not per frame, so it is a place where
+     * throwing is the right answer.
      */
     cameraBounds(gridWidth: number, gridHeight: number, opts: { maxElevation?: number } = {}): this {
         const camera = this.systems?.cameras?.main;
@@ -353,6 +456,19 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
             throw new IsoUsageError(
                 'there is no main camera to set bounds on',
                 'call cameraBounds() from your Scene\'s create()'
+            );
+        }
+
+        // Prima di worldBounds, ma DOPO nulla che scriva: una dimensione non
+        // positiva la' dentro restituisce {0,0,0,0} per convenzione (con i suoi
+        // test nel core, che non si toccano), e setBounds la applicherebbe
+        // subito inchiodando la camera sull'origine, in silenzio. NaN non entra
+        // in questo ramo (`NaN <= 0` e' falso) e cade su worldBounds, che lo
+        // rifiuta con il messaggio giusto sulla finitezza: l'ordine e' voluto.
+        if (gridWidth <= 0 || gridHeight <= 0) {
+            throw new IsoConfigError(
+                `cameraBounds() got a ${gridWidth}x${gridHeight} grid, which would pin the camera at the origin`,
+                'call cameraBounds() after the map is loaded, with its real dimensions'
             );
         }
 
@@ -614,6 +730,12 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
  * reads; copying it yields a plugin mounted on `scene["null"]` with no warning.
  * This function cannot produce that shape.
  *
+ * It also `console.warn`s — never throws — when Phaser's `PluginCache`
+ * already holds a DIFFERENT isometric configuration under the same key, which
+ * is the shape a second `Phaser.Game` silently inherits. See
+ * `game.destroy(true, true)` and `Phaser.Plugins.PluginCache.remove()` for the
+ * two ways out; the warning names both.
+ *
  * ```ts
  * new Phaser.Game({
  *   plugins: { scene: [ isoScenePlugin({
@@ -625,10 +747,12 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
  */
 export function isoScenePlugin(opts: IsoScenePluginOptions = {}): Phaser.Types.Core.PluginObjectItem {
     const { mapping = 'iso', projection, ...resto } = opts;
+    const plugin = projection ? IsoPlugin.withDefaults(projection, resto) : IsoPlugin;
 
-    return {
-        key: ISO_PLUGIN_KEY,
-        plugin: projection ? IsoPlugin.withDefaults(projection, resto) : IsoPlugin,
-        mapping
-    };
+    // Qui e non altrove: questa funzione gira PRIMA che il Game esista, ed e'
+    // l'unico punto in cui la configurazione richiesta e quella gia' in cache
+    // sono entrambe visibili.
+    avvisaSeLaCacheHaAltro(mapping, plugin);
+
+    return { key: ISO_PLUGIN_KEY, plugin, mapping };
 }
