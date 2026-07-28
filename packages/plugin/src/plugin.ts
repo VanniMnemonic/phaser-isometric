@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { createDepthAssigner, createProjection, DEFAULT_BANDS } from '@iso-internal/core';
 import type {
+    Band,
     DepthAssigner,
     DepthAssignerOptions,
+    Point,
     Projection,
     ProjectionOptions,
     ProjectionSpec
@@ -40,6 +42,19 @@ function notConfigured(what: string): IsoUsageError {
     );
 }
 
+/**
+ * What `place()` needs from its target: a position and a depth setter.
+ *
+ * Deliberately structural rather than `Phaser.GameObjects.GameObject`. Not
+ * every Game Object has `x`/`y` (a Group does not), and asking for exactly the
+ * three members we touch means `place()` can be exercised with a plain object.
+ */
+export type Placeable = {
+    x: number;
+    y: number;
+    setDepth(value: number): unknown;
+};
+
 export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     // `useDefineForClassFields: false` (vedi tsconfig.base.json) e' cio' che
     // rende questi campi assegnazioni normali nel costruttore invece di
@@ -49,6 +64,11 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     private proiezione: Projection | null = null;
     private assegnatore: DepthAssigner | null = null;
     private vivo = false;
+
+    // Riusato a ogni place(): con centinaia di entita' che si muovono ogni
+    // frame, allocare un Point per chiamata darebbe al GC un lavoro che non
+    // deve fare. `projectInto` esiste nel core esattamente per questo.
+    private readonly appoggio: Point = { x: 0, y: 0 };
 
     constructor(
         scene: Phaser.Scene,
@@ -125,6 +145,42 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     /** The seven default depth bands: floor, decal, prop, item, actor, hero, overlay. */
     get bands(): typeof DEFAULT_BANDS {
         return DEFAULT_BANDS;
+    }
+
+    /**
+     * Projects a cell, moves the target to the CENTRE of that cell's top face,
+     * and assigns its isometric depth.
+     *
+     * One code path for position and depth, so an object created through
+     * `this.add.isoSprite(...)` and one placed by hand can never end up using
+     * different conventions.
+     *
+     * Elevation moves the target UP the screen (negative y): a cell at z=2 with
+     * the default `elevationStep` sits 48px above the same cell at z=0.
+     */
+    place<T extends Placeable>(
+        target: T,
+        gx: number,
+        gy: number,
+        z = 0,
+        band: Band = DEFAULT_BANDS.prop,
+        sub = 0
+    ): T {
+        // `projection` e `depth` lanciano entrambi se il plugin non e' stato
+        // configurato: leggerli per primi rende l'errore quello giusto, invece
+        // di un TypeError su null piu' avanti.
+        const punto = this.projection.projectInto(this.appoggio, gx, gy, z);
+
+        target.x = punto.x;
+        target.y = punto.y;
+
+        // API pubblica, non `_depth`. Misurato: N setDepth alzano un solo
+        // booleano, quindi Phaser coalesce comunque in un sort per frame.
+        // Scrivere il campo privato risparmierebbe N assegnazioni booleane e
+        // costerebbe la compatibilita' con ogni futura versione.
+        target.setDepth(this.depth.keyFor(gx, gy, band, sub));
+
+        return target;
     }
 
     override boot(): void {
