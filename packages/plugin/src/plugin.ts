@@ -377,9 +377,17 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * `pointer.worldX` / `pointer.worldY`, not `pointer.x` / `pointer.y`.
      *
      * Exact to the pixel and independent of the render list, unlike Phaser's
-     * own input picking. Returns `null` when there is nothing there — including
-     * when no `setHeights()` was ever called — and never throws: this is a
-     * hot path.
+     * own input picking. Returns `null` when there is nothing there —
+     * including when no `setHeights()` was ever called.
+     *
+     * This is a hot path, so `worldX`/`worldY`/`opts` get NO per-frame input
+     * validation — call it every frame without worrying about the cost of
+     * guarding against a stray `NaN`/`Infinity` (the core's `pick` already
+     * treats those as "nothing there" instead of looping forever). It STILL
+     * throws if the plugin has never been configured: that is not a per-frame
+     * condition, it is a setup error that is either true or false for the
+     * whole life of the Scene, and returning an empty result for it would
+     * surface only as "nothing renders", with no clue why.
      */
     pick(worldX: number, worldY: number, opts: PickOptions = {}): Cell | null {
         if (!this.sorgenteQuote) return null;
@@ -395,6 +403,14 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * from anywhere in the render path and `disableCull` is inert for Sprites —
      * so this is not an optimisation on top of an existing one. It is the only
      * one there is.
+     *
+     * A hot path, safe to call every frame: `pad` gets no per-frame
+     * validation. It STILL throws if the plugin has never been configured, or
+     * if the Scene has no main camera — both are setup errors, constant for
+     * the whole life of the Scene, not something a frame can vary. Returning
+     * an empty range for either would look like "nothing renders" with no
+     * indication why, which is the failure mode this plugin's error messages
+     * exist to prevent.
      */
     cull(pad: CullPadding): GridRect {
         return cullBounds(this.projection, this.view(), pad);
@@ -510,6 +526,13 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
 
         this.proiezione = null;
         this.assegnatore = null;
+        // Senza questo, un pick() in arrivo in coda dopo il destroy (un evento
+        // di input gia' schedulato mentre la Scene si smonta e' il caso
+        // reale) non prenderebbe piu' l'uscita anticipata su sorgenteQuote
+        // nulla: cadrebbe su `this.projection`, che lancia da plugin non
+        // configurato. Rilasciare cio' che questa fase ha acquisito e' lo
+        // stesso principio di proiezione/assegnatore appena sopra.
+        this.sorgenteQuote = null;
 
         if (this.systems) {
             delete (this.systems as unknown as Record<string, unknown>)[ISO_SYS_KEY];
