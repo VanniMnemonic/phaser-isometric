@@ -10,6 +10,7 @@ import type {
     ProjectionSpec
 } from '@iso-internal/core';
 import { IsoUsageError } from './errors';
+import { registerIsoSprite } from './iso-sprite';
 
 /**
  * The key this plugin occupies in Phaser's PluginCache.
@@ -20,6 +21,19 @@ import { IsoUsageError } from './errors';
  * different class.
  */
 export const ISO_PLUGIN_KEY = 'IsoPlugin';
+
+/**
+ * Where the plugin also mounts itself on the Scene's Systems, independently of
+ * the user's chosen `mapping`.
+ *
+ * The GameObject factory is registered on `GameObjectFactory.prototype`, which
+ * is GLOBAL — one registration for the whole page, not one per Scene. So at
+ * call time the factory function has to find the plugin belonging to the Scene
+ * it was invoked on, and it cannot know what `mapping` that user picked. This
+ * is that anchor. It is intentionally ugly-looking so nobody mistakes it for
+ * public API.
+ */
+export const ISO_SYS_KEY = '__phaserIsometric';
 
 export interface IsoConfigureOptions extends ProjectionOptions {
     /** Options forwarded to the core's depth assigner. */
@@ -83,6 +97,8 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // E' lo schema identico di CameraManager, TweenManager e InputPlugin, che
         // sono i tre plugin di Phaser che fanno questo lavoro sul serio.
         scene.sys.events.on(Phaser.Scenes.Events.START, this.start, this);
+
+        registerIsoSprite(pluginManager);
     }
 
     /**
@@ -214,6 +230,9 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
 
         this.vivo = true;
 
+        // Ancoraggio indipendente dal mapping, per la factory globale.
+        (this.systems as unknown as Record<string, unknown>)[ISO_SYS_KEY] = this;
+
         // LA riga che la classe base non scrive. `ScenePlugin#destroy` promette
         // nel proprio JSDoc di essere chiamato automaticamente alla morte della
         // Scene: misurato falso. Systems.destroy azzera una lista cablata a mano
@@ -271,6 +290,10 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
 
         this.proiezione = null;
         this.assegnatore = null;
+
+        if (this.systems) {
+            delete (this.systems as unknown as Record<string, unknown>)[ISO_SYS_KEY];
+        }
 
         // Azzera scene/systems/game/pluginManager. Va per ultimo: tutto quello
         // che sta sopra ha bisogno di `this.systems`.
