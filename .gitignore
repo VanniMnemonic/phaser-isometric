@@ -1,8 +1,13 @@
 node_modules/
 dist/
+packages/*/dist/
 coverage/
 *.tsbuildinfo
 .DS_Store
 
 # Plan file di continuità: locale, mai committato
 .claude/plan.md
+
+# Worktree isolati creati dall'harness, e scratch della subagent-driven-development
+.claude/worktrees/
+.superpowers/

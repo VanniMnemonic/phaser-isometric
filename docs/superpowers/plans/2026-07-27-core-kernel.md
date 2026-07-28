@@ -24,6 +24,7 @@ Ogni task eredita implicitamente questi vincoli.
 - **Import relativi SENZA estensione** (`from './types'`, non `'./types.js'`). È `moduleResolution: "bundler"`, ed è la convenzione del progetto di riferimento dell'utente: 263 import estensionless, zero con `.js`.
 - **`lib: ES2020`** — vietati `Array.prototype.at()` (TS2550), `String.replaceAll`, `Object.groupBy`. Vincolo dei progetti consumatori dell'utente.
 - **`vitest` NON typechecka** (esbuild strippa i tipi senza controllarli). `pnpm typecheck` (`tsc --noEmit`) è uno step separato, **mai dietro una pipe** — un pipe restituisce l'exit code dell'ultimo comando, quindi `pnpm test | tail -5 && git commit` committa anche con i test rossi.
+- **`-0` non è `0` per `toEqual` e `toBe`.** `Math.round(-0.4896)` vale `-0`, e i matcher di uguaglianza profonda di Vitest lo distinguono da `+0`: un `toEqual([0, 0])` fallisce con `expected [ -0, +0 ] to deeply equal [ +0, +0 ]`. Vale per ogni test che arrotonda una coordinata verso la cella `(0,0)`. Due forme corrette, in ordine di preferenza: **normalizzare il segno** con `Math.round(g.x) + 0` e tenere `toEqual`, che conserva la diagnostica mostrando le coordinate sbagliate in caso di fallimento; oppure confrontare con `===`, che equipara `-0` e `0` ma su un booleano stampa solo `expected false to be true`.
 - **`useDefineForClassFields: false`** in `tsconfig.base.json`. Nel core non cambia nulla, ma il guscio sottoclasserà GameObject di Phaser, dove un class field che collide con un accessor di prototype emette `defineProperty` e **shadowa il setter**. Il progetto di riferimento ha `true`: è esattamente la trappola da non ereditare.
 - **Convenzione di origine, unica e non negoziabile:** `project(gx, gy, z)` restituisce il **centro della faccia superiore** della cella. Ogni funzione del core la assume.
 - **Nessuna dipendenza runtime** in `packages/core`. Solo `devDependencies` alla radice.
@@ -140,7 +141,8 @@ valido.
 
 **Files:**
 - Create: `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `vitest.config.ts`
-- Create: `packages/core/package.json`, `packages/core/tsconfig.json`, `packages/core/src/index.ts`
+- Create: `packages/core/package.json`, `packages/core/tsconfig.json`,
+  `packages/core/tsconfig.test.json`, `packages/core/src/index.ts`
 - Test: `packages/core/test/purity.test.ts`
 
 **Interfaces:**
@@ -165,7 +167,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = resolve(HERE, '../src');
 const PKG = resolve(HERE, '../package.json');
-const TSCONFIG = resolve(HERE, '../tsconfig.json');
+const TSCONFIGS = [resolve(HERE, '../tsconfig.json'), resolve(HERE, '../tsconfig.test.json')];
 
 function collect(dir: string): string[] {
     let out: string[] = [];
@@ -244,8 +246,10 @@ describe('vincolo architetturale: il core e\' puro', () => {
         expect(/phaser/i.test(readFileSync(PKG, 'utf8')), 'packages/core/package.json nomina phaser').toBe(false);
     });
 
-    it('il tsconfig del core non include i tipi di phaser', () => {
-        expect(/phaser/i.test(readFileSync(TSCONFIG, 'utf8')), 'packages/core/tsconfig.json nomina phaser').toBe(false);
+    it('nessun tsconfig del core include i tipi di phaser', () => {
+        for (const path of TSCONFIGS) {
+            expect(/phaser/i.test(readFileSync(path, 'utf8')), `${path} nomina phaser`).toBe(false);
+        }
     });
 });
 ```
@@ -272,7 +276,7 @@ Atteso: **FAIL**. `packages/core/src` non esiste ancora — `collect()` lancia `
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p packages/core/tsconfig.json",
+    "typecheck": "tsc --noEmit -p packages/core/tsconfig.test.json",
     "build:types": "tsc --emitDeclarationOnly -p packages/core/tsconfig.json"
   },
   "devDependencies": {
@@ -367,6 +371,26 @@ export default defineConfig({
 > `types: ["node"]` è restrittivo di proposito: senza, TypeScript includerebbe **ogni**
 > pacchetto `@types/*` visibile, e i tipi globali di Phaser potrebbero entrare senza un import.
 > Elencarli esplicitamente chiude quella porta.
+
+`packages/core/tsconfig.test.json`:
+
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false
+  },
+  "include": ["src", "test"]
+}
+```
+
+> Serve un **secondo** tsconfig perché quello di build ha `include: ["src"]` e `rootDir: "src"`:
+> senza, `tsc --noEmit` non guarderebbe mai i file di test, che invece contengono codice a
+> livello di tipi (tuple, `Parameters<typeof …>`, cast). E `vitest` **non typechecka**, quindi
+> quegli errori non li vedrebbe nessuno. Il tsconfig di build resta puro per l'emissione dei
+> `.d.ts`; questo copre `src` **e** `test` e non emette nulla.
 
 `packages/core/src/index.ts`:
 
@@ -513,6 +537,20 @@ export interface GridRect { minX: number; maxX: number; minY: number; maxY: numb
  */
 export interface HeightSource {
     heightAt(gx: number, gy: number): number | null;
+
+    /**
+     * Capability OPZIONALE: un limite superiore alle quote presenti.
+     *
+     * Se la sorgente la espone, `pick` la usa come default per sapere fino a che
+     * quota risalire. Se NON la espone, chi chiama `pick` DEVE passare
+     * `opts.maxElevation`, altrimenti il default e' 0 e il picking sonda solo il
+     * pavimento: tutto cio' che e' elevato diventa impescabile, in silenzio.
+     *
+     * E' dichiarata qui, e non letta con un cast strutturale, proprio perche' chi
+     * implementa la propria sorgente la veda nell'interfaccia invece di scoprirla
+     * da un risultato sbagliato.
+     */
+    readonly maxElevation?: number;
 }
 
 /** Come si costruisce una proiezione. Entrambe le forme producono la stessa matrice. */
@@ -692,6 +730,18 @@ describe('project', () => {
         expect(r).toBe(out);
         expect(out).toEqual({ x: 48, y: 24 });
     });
+
+    it('non aliasa l\'oggetto origine del chiamante', () => {
+        // Se le closure catturassero l'oggetto del chiamante invece di una copia,
+        // `origin` resterebbe fermo mentre `project()` cambierebbe risultato — due
+        // fonti di verita' che divergono in silenzio. E un `o.x = 0.5` successivo
+        // aggirerebbe la validazione dell'origine intera senza alcun errore.
+        const o = { x: 400, y: 300 };
+        const t = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 }, { origin: o });
+        o.x = 999999;
+        expect(t.origin).toEqual({ x: 400, y: 300 });
+        expect(t.project(0, 0, 0)).toEqual({ x: 400, y: 300 });
+    });
 });
 ```
 
@@ -792,13 +842,22 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
         );
     }
 
-    const origin: Point = opts.origin ?? { x: 0, y: 0 };
-    if (!Number.isInteger(origin.x) || !Number.isInteger(origin.y)) {
+    const rawOrigin: Point = opts.origin ?? { x: 0, y: 0 };
+    if (!Number.isInteger(rawOrigin.x) || !Number.isInteger(rawOrigin.y)) {
         throw new IsoConfigError(
-            `l'origine deve avere componenti intere (vale x=${origin.x} y=${origin.y})`,
+            `l'origine deve avere componenti intere (vale x=${rawOrigin.x} y=${rawOrigin.y})`,
             'arrotonda l\'origine: una traslazione frazionaria reintroduce l\'arrotondamento che la convenzione del centro elimina'
         );
     }
+
+    // UNA sola copia congelata, usata sia dalle closure sia dal campo pubblico.
+    // Legare le closure all'oggetto del CHIAMANTE lo lascerebbe mutabile dopo la
+    // costruzione: `p.origin` resterebbe fermo mentre `p.project()` cambierebbe
+    // risultato, e un `o.x = 0.5` successivo aggirerebbe del tutto la validazione
+    // dell'origine intera — che esiste proprio per proteggere la convenzione del
+    // centro. Un Point e' un oggetto che un chiamante Phaser riusa e muta di
+    // frame in frame: trattenerne il riferimento non e' un'ipotesi teorica.
+    const origin = Object.freeze({ ...rawOrigin });
 
     function projectInto(out: Point, gx: number, gy: number, z = 0): Point {
         out.x = a * gx + c * gy + origin.x;
@@ -808,7 +867,7 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
 
     return Object.freeze({
         a, b, c, d, det, elevationStep,
-        origin: Object.freeze({ ...origin }),
+        origin,
         project(gx: number, gy: number, z = 0): Point {
             return projectInto({ x: 0, y: 0 }, gx, gy, z);
         },
@@ -824,7 +883,7 @@ pnpm vitest run packages/core/test/projection.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 13 test; typecheck exit 0.
+Atteso: **PASS**, 14 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -921,7 +980,16 @@ describe('unproject', () => {
         ];
         for (const pt of dentro) {
             const g = p.unproject(pt.x, pt.y, 0);
-            expect([Math.round(g.x), Math.round(g.y)], `${pt.x},${pt.y}`).toEqual([0, 0]);
+            // `===`, non `toEqual`, di proposito: alcuni di questi punti producono
+            // un -0 legittimo in una coordinata — `Math.round(-0.4896)` vale `-0` —
+            // che e' matematicamente zero ma fa fallire un confronto per uguaglianza
+            // profonda, perche' `toEqual` distingue -0 da +0. `===` li tratta come
+            // uguali, che e' la semantica corretta qui, ed e' anche quella che il
+            // ramo `fuori` usa gia'.
+            expect(
+                Math.round(g.x) === 0 && Math.round(g.y) === 0,
+                `${pt.x},${pt.y} dovrebbe cadere dentro la cella (0,0)`
+            ).toBe(true);
         }
         const fuori = [
             { x: 49, y: 0 },     // oltre il vertice destro
@@ -1000,7 +1068,7 @@ pnpm vitest run packages/core/test/projection.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 19 test; typecheck exit 0.
+Atteso: **PASS**, 20 test; typecheck exit 0.
 
 - [ ] **Step 5: Batteria di mutazione — provare che i test mordono**
 
@@ -1148,7 +1216,7 @@ pnpm vitest run packages/core/test/projection.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 23 test; typecheck exit 0.
+Atteso: **PASS**, 24 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1468,6 +1536,7 @@ Crea `packages/core/test/height-grid.test.ts`:
 ```ts
 import { describe, it, expect } from 'vitest';
 import { createHeightGrid } from '../src/height-grid';
+import { IsoConfigError } from '../src/errors';
 
 describe('createHeightGrid', () => {
     it('riempie di quota 0 per default', () => {
@@ -1529,6 +1598,21 @@ describe('createHeightGrid', () => {
         expect(() => g.setHeight(9, 9, 3)).not.toThrow();
         expect(g.maxElevation).toBe(0);
     });
+
+    it('rifiuta alla costruzione dimensioni non intere o negative', () => {
+        // Con width = 2.5, `inside()` accetterebbe (0,1) perche' 1 <= 2.5, ma
+        // l'indice calcolato sarebbe 2.5: `cells[2.5]` legge `undefined`, quindi
+        // heightAt violerebbe il contratto `number | null` e setHeight perderebbe
+        // la scrittura senza alcun segnale.
+        expect(() => createHeightGrid(2.5, 2)).toThrow(IsoConfigError);
+        expect(() => createHeightGrid(2, -1)).toThrow(IsoConfigError);
+        expect(() => createHeightGrid(Number.NaN, 2)).toThrow(IsoConfigError);
+    });
+
+    it('una griglia di dimensione zero e\' lecita e non ha celle', () => {
+        const g = createHeightGrid(0, 0);
+        expect(g.heightAt(0, 0)).toBeNull();
+    });
 });
 ```
 
@@ -1545,6 +1629,7 @@ Atteso: **FAIL** — `Failed to resolve import "../src/height-grid"`.
 Crea `packages/core/src/height-grid.ts`:
 
 ```ts
+import { IsoConfigError } from './errors';
 import type { HeightSource } from './types';
 
 export interface HeightGrid extends HeightSource {
@@ -1570,7 +1655,22 @@ const ABYSS = Number.NEGATIVE_INFINITY;
  * nessun boxing, e il confronto con una quota reale e' sempre falso.
  */
 export function createHeightGrid(width: number, height: number, fill: number | null = 0): HeightGrid {
-    const cells = new Float64Array(Math.max(0, width * height));
+    // Validare alla costruzione, come createProjection e createDepthAssigner.
+    // Con una dimensione frazionaria `inside()` accetterebbe una cella il cui
+    // indice calcolato e' frazionario: `cells[2.5]` legge `undefined`, quindi
+    // `heightAt` violerebbe il proprio contratto `number | null` e `setHeight`
+    // perderebbe la scrittura in silenzio — un undefined che si propaga fino al
+    // picking, dove diventa difficile da diagnosticare.
+    for (const [name, value] of [['width', width], ['height', height]] as const) {
+        if (!Number.isInteger(value) || value < 0) {
+            throw new IsoConfigError(
+                `${name} deve essere un intero non negativo (vale ${String(value)})`,
+                `passa un intero >= 0 per ${name}`
+            );
+        }
+    }
+
+    const cells = new Float64Array(width * height);
     cells.fill(fill === null ? ABYSS : fill);
 
     let maxElevation = fill === null ? 0 : fill;
@@ -1607,7 +1707,7 @@ pnpm vitest run packages/core/test/height-grid.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 8 test; typecheck exit 0.
+Atteso: **PASS**, 10 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -1653,6 +1753,7 @@ import { describe, it, expect } from 'vitest';
 import { createProjection } from '../src/projection';
 import { createHeightGrid } from '../src/height-grid';
 import { pick } from '../src/picking';
+import type { HeightSource } from '../src/types';
 
 const proj = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
 
@@ -1751,6 +1852,19 @@ describe('pick con elevazione', () => {
         const s = proj.project(1, 1, 6);
         expect(pick(proj, s.x, s.y, g)).toEqual({ gx: 1, gy: 1, z: 6 });
     });
+
+    it('una sorgente che non dichiara maxElevation sonda solo il pavimento', () => {
+        // La capability e' opzionale, e la sua assenza ha una conseguenza
+        // DOCUMENTATA invece che una sorpresa: senza il campo e senza
+        // opts.maxElevation il limite e' 0, quindi tutto cio' che e' elevato e'
+        // impescabile. Passando il limite esplicitamente, si ritrova.
+        const g = createHeightGrid(8, 8, 0);
+        g.setHeight(1, 1, 4);
+        const nuda: HeightSource = { heightAt: (gx, gy) => g.heightAt(gx, gy) };
+        const s = proj.project(1, 1, 4);
+        expect(pick(proj, s.x, s.y, nuda)).toBeNull();
+        expect(pick(proj, s.x, s.y, nuda, { maxElevation: 4 })).toEqual({ gx: 1, gy: 1, z: 4 });
+    });
 });
 ```
 
@@ -1804,8 +1918,11 @@ export function pick(
     heights: HeightSource,
     opts: PickOptions = {}
 ): Cell | null {
-    const dichiarata = (heights as { maxElevation?: number }).maxElevation;
-    const maxElevation = opts.maxElevation ?? (typeof dichiarata === 'number' ? dichiarata : 0);
+    // `maxElevation` e' una capability dichiarata su HeightSource, non un campo
+    // annusato con un cast: chi implementa la propria sorgente la vede nel tipo.
+    // Se manca e il chiamante non passa `opts.maxElevation`, il default e' 0 e si
+    // sonda solo il pavimento — comportamento documentato, non una sorpresa.
+    const maxElevation = opts.maxElevation ?? heights.maxElevation ?? 0;
 
     const scratch: Point = { x: 0, y: 0 };
 
@@ -1829,7 +1946,7 @@ pnpm vitest run packages/core/test/picking.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 11 test; typecheck exit 0.
+Atteso: **PASS**, 12 test; typecheck exit 0.
 
 - [ ] **Step 5: Batteria di mutazione**
 
@@ -2156,6 +2273,7 @@ Crea `packages/core/test/bounds.test.ts`:
 import { describe, it, expect } from 'vitest';
 import { createProjection } from '../src/projection';
 import { worldBounds, contentBounds } from '../src/bounds';
+import { IsoConfigError } from '../src/errors';
 
 const proj = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
 
@@ -2206,10 +2324,19 @@ describe('worldBounds', () => {
         expect(spostata.width).toBe(base.width);
     });
 
-    it('una griglia vuota ha bounds a dimensione zero', () => {
-        const b = worldBounds(proj, 0, 0);
-        expect(b.width).toBe(0);
-        expect(b.height).toBe(0);
+    it('una griglia vuota ha bounds a dimensione zero, all\'origine', () => {
+        expect(worldBounds(proj, 0, 0)).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+    });
+
+    it('rifiuta dimensioni o elevazione non finite', () => {
+        // NaN non e' ne' <= 0 ne' > 0: scivolerebbe oltre la guardia sulla
+        // dimensione. I quattro angoli diventerebbero tutti NaN, e in boundsOf i
+        // confronti con NaN sono sempre falsi: i punti sparirebbero dal min/max
+        // senza azzerare `almenoUno`, e il risultato sarebbe un Rect piccolo e
+        // sbagliato derivato dal solo angolo (0,0). Silenzioso, ed e' il peggio.
+        expect(() => worldBounds(proj, Number.NaN, 8)).toThrow(IsoConfigError);
+        expect(() => worldBounds(proj, 8, Number.POSITIVE_INFINITY)).toThrow(IsoConfigError);
+        expect(() => worldBounds(proj, 8, 8, { maxElevation: Number.NaN })).toThrow(IsoConfigError);
     });
 });
 
@@ -2259,6 +2386,7 @@ Atteso: **FAIL** — `Failed to resolve import "../src/bounds"`.
 Crea `packages/core/src/bounds.ts`:
 
 ```ts
+import { IsoConfigError } from './errors';
 import type { Projection } from './projection';
 import type { Cell, Point, Rect } from './types';
 
@@ -2301,6 +2429,29 @@ export function worldBounds(
     gridHeight: number,
     opts: { maxElevation?: number } = {}
 ): Rect {
+    // Validare la finitezza PRIMA della guardia su <= 0, perche' NaN non e' ne'
+    // <= 0 ne' > 0: scivolerebbe oltre. Con gridWidth = NaN i quattro angoli
+    // proiettati diventano tutti {x:NaN,y:NaN}, e in boundsOf i confronti
+    // `NaN < minX` e `NaN > maxX` sono entrambi falsi — i punti sparirebbero dal
+    // min/max senza azzerare `almenoUno`. Il risultato sarebbe un Rect piccolo e
+    // sbagliato, derivato dal solo angolo (0,0) che e' sempre finito: per
+    // camera.setBounds, un clamp minuscolo senza alcun segnale.
+    //
+    // Non e' un percorso caldo: worldBounds si chiama a ogni cambio di livello,
+    // non a ogni frame. Lanciare qui e' la stessa disciplina di createProjection.
+    for (const [name, value] of [
+        ['gridWidth', gridWidth],
+        ['gridHeight', gridHeight],
+        ['maxElevation', opts.maxElevation ?? 0]
+    ] as const) {
+        if (!Number.isFinite(value)) {
+            throw new IsoConfigError(
+                `${name} non e' un numero finito (vale ${String(value)})`,
+                `passa un numero finito per ${name}`
+            );
+        }
+    }
+
     if (gridWidth <= 0 || gridHeight <= 0) {
         return { x: 0, y: 0, width: 0, height: 0 };
     }
@@ -2313,6 +2464,9 @@ export function worldBounds(
         for (const p of projection.cornersOf(gx, gy, 0)) points.push(p);
     }
 
+    // Il cast e' sound SOLO grazie ai due controlli sopra: dimensioni finite e
+    // > 0 garantiscono 16 punti finiti, quindi boundsOf non puo' restituire null.
+    // Se una futura modifica tocca quelle guardie, questo cast va rivisto.
     const base = boundsOf(points) as Rect;
     const lift = (opts.maxElevation ?? 0) * projection.elevationStep;
     return { x: base.x, y: base.y - lift, width: base.width, height: base.height + lift };
@@ -2340,7 +2494,7 @@ pnpm vitest run packages/core/test/bounds.test.ts
 pnpm typecheck
 ```
 
-Atteso: **PASS**, 10 test; typecheck exit 0.
+Atteso: **PASS**, 11 test; typecheck exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -2500,7 +2654,7 @@ pnpm test
 pnpm typecheck
 ```
 
-Atteso: **PASS** su tutti e 9 i file di test (~80 casi); typecheck exit 0.
+Atteso: **PASS** su tutti e 9 i file di test (86 casi); typecheck exit 0.
 
 > Non incanalare mai questi comandi in `tail`, `head` o `grep` prima di un commit: un pipeline
 > restituisce l'exit code dell'ULTIMO comando, quindi `pnpm test | tail -5 && git commit`
@@ -2521,15 +2675,18 @@ Vite in library mode ne emette zero."
 
 ## Definition of Done — Piano 1
 
-- [ ] `pnpm test` verde: 9 file di test, ~80 casi.
+- [ ] `pnpm test` verde: 9 file di test, 86 casi.
 - [ ] `pnpm typecheck` exit 0.
 - [ ] `pnpm build:types` produce 9 file `.d.ts`.
 - [ ] Le tre guardie architetturali passano, **e** la guardia sugli import è stata vista
       fallire con un `import Phaser` temporaneo (Task 1 Step 6).
 - [ ] Le tre batterie di mutazione (proiezione 5, picking 4, culling 5) hanno prodotto il
       numero atteso di fallimenti, e ogni buco scoperto è stato colmato.
-- [ ] `packages/core` non contiene la stringa `phaser` in alcun sorgente, `package.json` o
-      `tsconfig.json`.
+- [ ] Nessun sorgente di `packages/core` **importa** Phaser né usa il namespace `Phaser.` —
+      verificato sull'AST, non sul testo. Nominare Phaser in un **commento** è legittimo e
+      atteso: spiegare *perché* non lo si usa è esattamente la nota che merita di stare lì. Il
+      divieto sulla stringa letterale vale invece per `package.json` e per i `tsconfig`, dove
+      una menzione significherebbe una dipendenza o un tipo ambientale.
 
 Il Piano 2 (guscio Phaser) parte da qui e consuma `Projection`, `DepthAssigner`, `pick`,
 `cullBounds`, `worldBounds` attraverso il barrel.
