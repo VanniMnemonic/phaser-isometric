@@ -62,6 +62,17 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
 - **Validare alla costruzione, ovunque.** Cinque difetti del Piano 1 erano tutti della stessa
   classe: validazione mancante → risposta sbagliata **in silenzio**. Un input invalido lancia
   con un messaggio che **nomina la correzione**; un percorso caldo non lancia mai.
+
+  > **Precisato in esecuzione (2026-07-28), dopo il Task 8.** «Un percorso caldo non lancia
+  > mai» significa: **niente validazione degli input a ogni frame**. Non significa che un
+  > metodo caldo non possa lanciare *mai in assoluto*. Un plugin non configurato, o una
+  > Scene senza camera principale, non sono condizioni di frame — sono errori di setup, o
+  > sempre veri o sempre falsi per tutta la vita della Scene, e costano un controllo che non
+  > si paga per entità. `pick()` e `cull()` quindi **lanciano** in quel caso, come `place()`
+  > e `follow()`. La ragione è la stessa che ha prodotto il vincolo sopra: restituire un
+  > rettangolo vuoto in silenzio darebbe all'utente «non si vede niente» senza dire perché,
+  > cioè esattamente la classe di guasto che il Piano 1 ha pagato caro per eliminare. Il
+  > JSDoc che promette il contrario va corretto, non il codice.
 - **Validare PRIMA di mutare.** Un metodo che può lanciare non lascia mai dietro di sé uno
   stato mutato a metà: si calcola e si valida tutto in locali, e si scrive sui campi o sul
   target solo quando ogni pezzo è riuscito. **Questa regola vince sui blocchi di codice dei
