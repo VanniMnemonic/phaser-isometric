@@ -80,8 +80,17 @@ export class PlaygroundScene extends Phaser.Scene {
      *  event landed on the polygon, not just anywhere on the sprite's frame. */
     clickCount = 0;
 
-    /** The cell of whichever `IsoSprite` Phaser's input system last delivered
-     *  a `pointerdown` to. `null` until the first click. Compare this against
+    /** Incremented on every `pointerdown`, hit or miss — unlike `clickCount`,
+     *  which only counts hits on `hero`. Compare against `lastClickedCell`
+     *  to tell "no click happened yet" apart from "the most recent click
+     *  missed", both of which otherwise read as `lastClickedCell === null`. */
+    pointerDownCount = 0;
+
+    /** The cell of whichever `IsoSprite` was under the pointer on the MOST
+     *  RECENT `pointerdown`, or `null` if that click hit nothing.
+     *  Recomputed from scratch on every click (see `create()`), so it never
+     *  carries over a previous click's hit: a genuine miss reliably reads
+     *  back as `null`, not as whatever was clicked before. Compare against
      *  `iso.pick(worldX, worldY)` at the same point to check that Phaser's
      *  own hit-testing and this plugin's picking agree. */
     lastClickedCell: { gx: number; gy: number } | null = null;
@@ -151,18 +160,31 @@ export class PlaygroundScene extends Phaser.Scene {
         // testabile senza un vero evento di puntatore in un browser reale.
         this.iso.makeDiamondHitArea(hero);
 
-        // Un solo handler a livello di scena invece di uno per sprite: con
-        // `topOnly` (il default di Phaser) l'evento arriva comunque a un
-        // solo oggetto per click, e ogni IsoSprite porta già gx/gy — non
-        // serve una chiusura per tile. `hero` in più incrementa clickCount e
-        // si tinge di verde: è la prova specifica del click reale sull'area
-        // a diamante, distinta dal confronto generico pick()-vs-click sopra.
-        this.input.on(Phaser.Input.Events.GAMEOBJECT_DOWN, (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
-            if (!(gameObject instanceof IsoSprite)) return;
+        // POINTER_DOWN, non GAMEOBJECT_DOWN — verificato nel sorgente di
+        // Phaser (4.2.1, InputPlugin#processDownEvents): il ciclo su
+        // `currentlyOver` emette GAMEOBJECT_DOWN per ciascun oggetto
+        // colpito, e SOLO DOPO, fuori dal ciclo, arriva
+        // `this.emit(POINTER_DOWN, pointer, currentlyOver)` — la gerarchia
+        // documentata (GAMEOBJECT_POINTER_DOWN, poi GAMEOBJECT_DOWN, poi
+        // POINTER_DOWN) è quindi anche l'ordine reale di dispaccio, non solo
+        // quello dichiarato. `currentlyOver` è il secondo argomento di
+        // POINTER_DOWN: la lista (vuota se non si è colpito nulla) degli
+        // oggetti interattivi sotto il puntatore in QUESTO click. Un solo
+        // handler che legge quella lista — invece di azzerare in un handler
+        // e scrivere in un altro — evita ogni dipendenza dall'ordine
+        // relativo fra due eventi separati: il valore corretto si calcola
+        // per intero a ogni click, quindi un click che non colpisce nulla
+        // resetta `lastClickedCell` a `null` invece di lasciarci la cella
+        // del click precedente. `hero` in più incrementa clickCount e si
+        // tinge di verde: è la prova specifica del click reale sull'area a
+        // diamante, distinta dal confronto generico pick()-vs-click sopra.
+        this.input.on(Phaser.Input.Events.POINTER_DOWN, (_pointer: Phaser.Input.Pointer, currentlyOver: Phaser.GameObjects.GameObject[]) => {
+            this.pointerDownCount += 1;
 
-            this.lastClickedCell = { gx: gameObject.gx, gy: gameObject.gy };
+            const hit = currentlyOver.find((obj): obj is IsoSprite => obj instanceof IsoSprite);
+            this.lastClickedCell = hit ? { gx: hit.gx, gy: hit.gy } : null;
 
-            if (gameObject === hero) {
+            if (hit === hero) {
                 this.clickCount += 1;
                 hero.setTint(0x00ff00);
             }
