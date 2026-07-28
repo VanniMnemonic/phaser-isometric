@@ -148,5 +148,11 @@ describe('snapshot() — dopo destroy()', () => {
         expect(() => { snap = plugin.snapshot(); }).not.toThrow();
         expect(snap?.booted).toBe(false);
         expect(snap?.camera).toBeNull();
+
+        // mappingValido va rilasciato in destroy() come proiezione/assegnatore/
+        // sorgenteQuote: altrimenti questo stesso snapshot riporterebbe un
+        // mapping ancora valido mentre booted/camera sono gia' null — due
+        // momenti diversi nello stesso oggetto.
+        expect(snap?.mapping).toBeNull();
     });
 });

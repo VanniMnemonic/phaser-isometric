@@ -589,6 +589,12 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // configurato. Rilasciare cio' che questa fase ha acquisito e' lo
         // stesso principio di proiezione/assegnatore appena sopra.
         this.sorgenteQuote = null;
+        // Stesso principio ancora: acquisito in boot(), rilasciato qui. Senza
+        // questo, snapshot() dopo destroy() riporterebbe un mapping ancora
+        // valido mentre booted e camera sono gia' null — due momenti diversi
+        // nello stesso oggetto, per una superficie che esiste apposta per
+        // descriverne uno solo.
+        this.mappingValido = null;
 
         if (this.systems) {
             delete (this.systems as unknown as Record<string, unknown>)[ISO_SYS_KEY];
