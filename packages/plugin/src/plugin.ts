@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createDepthAssigner, createProjection, DEFAULT_BANDS, worldBounds } from '@iso-internal/core';
+import { createDepthAssigner, createProjection, DEFAULT_BANDS, IsoConfigError, worldBounds } from '@iso-internal/core';
 import type {
     Band,
     DepthAssigner,
@@ -13,6 +13,26 @@ import type {
 import { IsoUsageError } from './errors';
 import { registerIsoSprite } from './iso-sprite';
 import { viewOf } from './camera';
+
+/**
+ * Guards a numeric input to `follow()`. `projectInto` validates nothing (by
+ * design — it is a hot path), so this is the only place that stands between
+ * a caller's `NaN`/`Infinity` and a proxy that is silently poisoned forever:
+ * Phaser's own `startFollow`/`Clamp` never throw either, so without this
+ * check the camera would just stop moving, with no error and no log.
+ *
+ * `IsoConfigError`, not `IsoUsageError`: this is a bad VALUE, not a call made
+ * in an order that cannot work — the same distinction the core already
+ * draws for every constructor argument it validates.
+ */
+function requireFiniteFollowInput(value: number, name: string): void {
+    if (!Number.isFinite(value)) {
+        throw new IsoConfigError(
+            `follow()'s \`${name}\` is not a finite number (got ${String(value)})`,
+            `pass a finite number for ${name}`
+        );
+    }
+}
 
 /**
  * The key this plugin occupies in Phaser's PluginCache.
@@ -250,10 +270,15 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
             );
         }
 
-        // Leggere la proiezione (lancia se non configurato) e roundPixels PRIMA
-        // di mutare qualunque stato: una follow() rifiutata non deve lasciare
+        // Leggere la proiezione (lancia se non configurato), validare gli
+        // input numerici, e leggere roundPixels: tutto PRIMA di mutare
+        // qualunque stato. Una follow() rifiutata non deve lasciare
         // `inseguito` assegnato ne' il proxy proiettato a meta'.
         const proiezione = this.projection;
+        requireFiniteFollowInput(target.gx, 'gx');
+        requireFiniteFollowInput(target.gy, 'gy');
+        requireFiniteFollowInput(target.z ?? 0, 'z');
+        requireFiniteFollowInput(opts.lerp ?? 1, 'lerp');
         const roundPixels = camera.roundPixels;
 
         this.inseguito = target;
