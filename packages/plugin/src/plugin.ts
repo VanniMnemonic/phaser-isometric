@@ -1,9 +1,14 @@
 import Phaser from 'phaser';
-import { createDepthAssigner, createProjection, DEFAULT_BANDS, IsoConfigError, worldBounds } from '@iso-internal/core';
+import { createDepthAssigner, createProjection, cullBounds, DEFAULT_BANDS, IsoConfigError, pick, worldBounds } from '@iso-internal/core';
 import type {
     Band,
+    Cell,
+    CullPadding,
     DepthAssigner,
     DepthAssignerOptions,
+    GridRect,
+    HeightSource,
+    PickOptions,
     Point,
     Projection,
     ProjectionOptions,
@@ -118,6 +123,11 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     // trattiene come `_follow`. Riassegnarlo (invece di scrivere .x/.y) romperebbe
     // quel riferimento e la camera resterebbe ferma per sempre, senza errori.
     private readonly proxy: Point = { x: 0, y: 0 };
+
+    // La sorgente di quote usata da pick(). `null` finche' nessuno la imposta:
+    // e' quello che rende pick() sicuro da chiamare prima di setHeights(),
+    // restituendo null invece di lanciare.
+    private sorgenteQuote: HeightSource | null = null;
 
     constructor(
         scene: Phaser.Scene,
@@ -344,6 +354,50 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         camera.setBounds(b.x, b.y, b.width, b.height);
 
         return this;
+    }
+
+    /**
+     * Sets the elevation source used by `pick()`.
+     *
+     * `HeightSource` is an interface, not a class: bring your own data. The
+     * bundled `createHeightGrid` is one implementation, not a requirement.
+     */
+    setHeights(source: HeightSource | null): this {
+        this.sorgenteQuote = source;
+        return this;
+    }
+
+    /** The elevation source currently set, or `null` if none was. */
+    get heights(): HeightSource | null {
+        return this.sorgenteQuote;
+    }
+
+    /**
+     * The cell whose top face is visible at a WORLD point — pass
+     * `pointer.worldX` / `pointer.worldY`, not `pointer.x` / `pointer.y`.
+     *
+     * Exact to the pixel and independent of the render list, unlike Phaser's
+     * own input picking. Returns `null` when there is nothing there — including
+     * when no `setHeights()` was ever called — and never throws: this is a
+     * hot path.
+     */
+    pick(worldX: number, worldY: number, opts: PickOptions = {}): Cell | null {
+        if (!this.sorgenteQuote) return null;
+        return pick(this.projection, worldX, worldY, this.sorgenteQuote, opts);
+    }
+
+    /**
+     * The range of cells that can intersect the camera's view. Both ends
+     * INCLUSIVE, and deliberately conservative: it can include a cell that is
+     * not visible, never exclude one that is.
+     *
+     * Phaser 4 does NO per-sprite culling — `BaseCamera.cull()` is not called
+     * from anywhere in the render path and `disableCull` is inert for Sprites —
+     * so this is not an optimisation on top of an existing one. It is the only
+     * one there is.
+     */
+    cull(pad: CullPadding): GridRect {
+        return cullBounds(this.projection, this.view(), pad);
     }
 
     /**
