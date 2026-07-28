@@ -14,3 +14,9 @@ coverage/
 
 # Scratch di verifica del Playwright MCP (screenshot, log console, snapshot pagina)
 .playwright-mcp/
+
+# Output di Playwright test (Task 12): report HTML e trace/retry — non gli
+# screenshot deliberati in examples/e2e/artifacts/, che sono l'evidenza del gate
+# e restano tracciati.
+examples/e2e/playwright-report/
+examples/e2e/test-results/
