@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>phaser-isometric benchmark</title>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #11141a;
+            color: #e8e8e8;
+            font-family: system-ui, sans-serif;
+        }
+        #game {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- No DOM controls here on purpose: this page exists only to be driven by
+         examples/e2e/bench.spec.ts via window.__bench, not by a human clicking around. -->
+    <div id="game"></div>
+    <script type="module" src="/src/bench.ts"></script>
+</body>
+</html>
