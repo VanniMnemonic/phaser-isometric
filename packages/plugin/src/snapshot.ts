@@ -57,20 +57,18 @@ export interface SnapshotSource {
     readonly isoSpriteCount: number;
 }
 
-/**
- * Distinguishes the bundled `HeightGrid` (from `createHeightGrid`) from a
- * hand-written `HeightSource`, structurally: `HeightGrid` is the only shape
- * in the core that carries `width`/`height`/`maxElevation` all as numbers,
- * alongside `heightAt`. Checking for those three, rather than an `instanceof`
- * on a concrete class, keeps `snapshotOf` from having to import a specific
- * implementation just to classify what was handed to it — matching the
- * core's own stance that `HeightSource` is an interface, bring your own
- * data. Requiring all three (not just `width`/`height`) matters: a
- * hand-written source that happens to expose `width`/`height` for its own
- * reasons, but not `maxElevation`, must fall through to 'custom' rather than
- * produce a 'grid' snapshot with `maxElevation: undefined` — a value JSON
- * would silently drop, breaking the round-trip contract.
- */
+// Distingue l'HeightGrid del pacchetto (da createHeightGrid) da una
+// HeightSource scritta a mano, per struttura: HeightGrid e' l'unica forma
+// nel core che porta width/height/maxElevation TUTTI numerici, insieme a
+// heightAt. Controllare questi tre, invece di un instanceof su una classe
+// concreta, evita a snapshotOf di dover importare un'implementazione
+// specifica solo per classificare cio' che riceve — coerente con la
+// posizione del core stesso, per cui HeightSource e' un'interfaccia: porta
+// i tuoi dati. Richiedere tutti e tre (non solo width/height) conta: una
+// sorgente scritta a mano che espone width/height per conto proprio, ma non
+// maxElevation, deve ricadere su 'custom' invece di produrre uno snapshot
+// 'grid' con maxElevation: undefined — un valore che JSON lascerebbe cadere
+// in silenzio, rompendo il contratto del round-trip.
 function isHeightGrid(source: HeightSource): source is HeightSource & { width: number; height: number; maxElevation: number } {
     const candidate = source as { width?: unknown; height?: unknown; maxElevation?: unknown };
     return typeof candidate.width === 'number' && typeof candidate.height === 'number' && typeof candidate.maxElevation === 'number';
@@ -83,10 +81,10 @@ function heightsOf(source: HeightSource | null): IsoSnapshot['heights'] {
         return { kind: 'grid', width: source.width, height: source.height, maxElevation: source.maxElevation };
     }
 
-    // `maxElevation` is OPTIONAL on `HeightSource`: `?? null` turns "the field
-    // was never declared" into the same `null` the type promises, instead of
-    // an `undefined` that `JSON.stringify` would silently drop from the
-    // round-trip.
+    // maxElevation e' OPZIONALE su HeightSource: `?? null` trasforma "il
+    // campo non e' mai stato dichiarato" nello stesso null che il tipo
+    // promette, invece di un undefined che JSON.stringify lascerebbe cadere
+    // in silenzio dal round-trip.
     return { kind: 'custom', maxElevation: source.maxElevation ?? null };
 }
 
@@ -102,10 +100,10 @@ export function snapshotOf(source: SnapshotSource): IsoSnapshot {
         version: 1,
         mapping: source.mapping,
         booted: source.booted,
-        // Derived, not duplicated: `configure()` sets projection and depth
-        // together, atomically, so one can never be null while the other
-        // isn't — reading `configured` off `projection` alone cannot drift
-        // from a `configured` field passed in separately.
+        // Derivato, non duplicato: configure() imposta proiezione e depth
+        // insieme, atomicamente, quindi l'una non puo' mai essere null
+        // mentre l'altra non lo e' — leggere configured da projection non
+        // puo' disallinearsi da un campo configured passato separatamente.
         configured: source.projection !== null,
         projection: source.projection,
         depth: source.depth,
