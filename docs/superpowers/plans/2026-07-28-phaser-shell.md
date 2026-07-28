@@ -2254,6 +2254,25 @@ Quattro fatti verificati che scrivono questo task:
    **non** sostituisce la hit area. Per aggiornarla bisogna mutare `input.hitArea` sul posto
    o chiamare prima `removeInteractive()`.
 
+   > **Corretto in esecuzione (2026-07-28), dopo il Task 7. Delle due strade, una è
+   > rotta.** Il codice di questo task sceglieva `removeInteractive()` seguito da
+   > `setInteractive()`. Il reviewer l'ha **provato empiricamente** con un test usa-e-getta
+   > e ha tracciato la causa nel sorgente di Phaser: `clear()`, che `removeInteractive`
+   > chiama, accoda l'oggetto a `_pendingRemoval` ma **non** lo toglie da `_list`
+   > (`InputPlugin.js:809-845`); il `setInteractive` immediatamente successivo vede
+   > l'oggetto ancora in `_list` e quindi **non** lo ri-accoda per l'inserimento
+   > (`InputPlugin.js:2220`). Al `preUpdate` seguente Phaser lo trova in entrambe le code,
+   > lo splicia e richiama `clear()` — stavolta sul `io` **nuovo**, appena installato —
+   > azzerando `target.input`. Esito: un game step dopo qualunque ri-chiamata, l'oggetto
+   > non è più interattivo **per niente**, non solo con una hit area stantia.
+   >
+   > **Vale quindi la mutazione sul posto**: se `target.input` esiste già si sostituiscono
+   > `hitArea` e `hitAreaCallback` direttamente, e `setInteractive` si chiama solo la prima
+   > volta. La lezione secondaria è sul test, non sul codice: quello prescritto qui
+   > **non faceva passare un frame vero** fra le due chiamate, quindi osservava l'istante
+   > in cui il vecchio `io` non è ancora stato distrutto e passava a vuoto. Un test sul
+   > ciclo di vita dell'input che non avanza il frame non sta verificando niente.
+
 **Files:**
 - Create: `packages/core/src/hit-area.ts`
 - Modify: `packages/core/src/index.ts`
