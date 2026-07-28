@@ -961,7 +961,9 @@ git commit -m "Piano 2 Task 2: IsoPlugin, mapping obbligatorio, withDefaults"
 ```
 
 **Definition of Done:**
-- 13 test verdi in `install.test.ts`; totale della suite **118**.
+- 15 test verdi in `install.test.ts`; totale della suite **120**. (13 dal blocco di codice
+  qui sotto, piu' 2 aggiunti in review: `configure()` dev'essere atomico, e la prova serve
+  in due forme distinte — plugin fresco e ri-configurazione fallita.)
 - `pnpm typecheck` esce 0.
 - Nessuna formula matematica in `plugin.ts`: proiezione e depth vengono dal core.
 - Il warning del `mapping` mancante nomina `mapping` **e** dice che `systemKey`/`sceneKey`
@@ -1245,7 +1247,7 @@ git commit -m "Piano 2 Task 3: ciclo di vita cablato a mano, perche' Phaser non 
 ```
 
 **Definition of Done:**
-- 6 test verdi in `lifecycle.test.ts`; totale della suite **124**.
+- 6 test verdi in `lifecycle.test.ts`; totale della suite **126**.
 - Le cinque mutazioni sono state provate e **ognuna** ha fatto fallire il test atteso.
 - `pnpm typecheck` esce 0.
 - `destroy()` chiama `super.destroy()` **per ultimo**.
@@ -1483,7 +1485,7 @@ git commit -m "Piano 2 Task 4: place(), un solo percorso per posizione e depth"
 ```
 
 **Definition of Done:**
-- 8 test verdi; totale **132**.
+- 8 test verdi; totale **134**.
 - Le quattro mutazioni provate, con l'esito della #2 annotato nel report.
 - `place()` non contiene aritmetica: proiezione e chiave vengono dal core.
 
@@ -1840,7 +1842,7 @@ git commit -m "Piano 2 Task 5: IsoSprite e la factory, con elevation al posto di
 ```
 
 **Definition of Done:**
-- 9 test verdi; totale **141**.
+- 9 test verdi; totale **143**.
 - La factory aggiunge **solo** al display list.
 - Nessun campo di `IsoSprite` collide con un accessor di Phaser (`x`, `y`, `depth`, `scale`,
   `angle`, `rotation`).
@@ -2204,7 +2206,7 @@ git commit -m "Piano 2 Task 6: camera isometrica, con roundPixels difeso"
 ```
 
 **Definition of Done:**
-- 10 test verdi; totale **151**.
+- 10 test verdi; totale **153**.
 - `viewOf` è pura e non importa Phaser.
 - `follow()` non modifica mai `roundPixels`, in nessuna direzione.
 - Le cinque mutazioni provate.
@@ -2561,7 +2563,7 @@ git commit -m "Piano 2 Task 7: rombo puro nel core, cablaggio nel guscio"
 ```
 
 **Definition of Done:**
-- 10 test nuovi; totale **165**.
+- 10 test nuovi; totale **167**.
 - `packages/core/test/purity.test.ts` resta verde: `hit-area.ts` non importa Phaser.
 - L'assert di uguaglianza sulla superficie del core è aggiornato.
 - Il report dichiara esplicitamente che il click **non** è verificato.
@@ -2737,7 +2739,7 @@ Run: `npx vitest run` → **172** test. `pnpm typecheck` → 0.
 git commit -m "Piano 2 Task 8: pick() e cull() sulla scena"
 ```
 
-**Definition of Done:** 8 test nuovi, totale **173**; le tre mutazioni provate; `cull()` non
+**Definition of Done:** 8 test nuovi, totale **175**; le tre mutazioni provate; `cull()` non
 legge mai `worldView`.
 
 ---
@@ -2827,7 +2829,7 @@ Run: `npx vitest run` → **179** test.
 git commit -m "Piano 2 Task 9: snapshot(), piano e serializzabile"
 ```
 
-**Definition of Done:** 7 test nuovi, totale **180**; il round-trip JSON passa; `snapshot()`
+**Definition of Done:** 7 test nuovi, totale **182**; il round-trip JSON passa; `snapshot()`
 non lancia in nessuno stato, nemmeno dopo `destroy()`.
 
 ---
@@ -3196,8 +3198,8 @@ soddisfa strutturalmente. `DiamondTarget` (Task 7) nomina i sei membri che
 `applyDiamondHitArea` usa. `HeightSource` viene dal core e non è ridefinito. `elevation`,
 non `z`, in tutti i task dal 5 in poi.
 
-**Conteggio dei test**, cumulativo: 105 → 118 → 124 → 132 → 141 → 151 → 165 → 173 → 180 →
-181. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
+**Conteggio dei test**, cumulativo: 105 → 120 → 126 → 134 → 143 → 153 → 167 → 175 → 182 →
+183. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
 aggiustare il conteggio: nel Piano 1 un conteggio sbagliato nel piano fu segnalato da un
 implementer che si rifiutò di inventare un test, ed era la risposta giusta.
 
