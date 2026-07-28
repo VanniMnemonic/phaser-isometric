@@ -28,8 +28,9 @@ mergiato: 102 test, `packages/core` con zero import di Phaser.
 
 Ogni affermazione su Phaser in questo documento è stata **misurata a runtime**, non letta
 nel JSDoc e non ricordata da Phaser 3. Il dossier delle misure è
-`scratchpad/recon-shell/MISURATO-runtime.md`; la prova che le ha prodotte è
-`scratchpad/jsdom-probe/`. Dove il JSDoc di Phaser e la misura non vanno d'accordo, in
+`docs/recon/MISURATO-runtime.md`; la prova che le ha prodotte viveva in una directory di
+scratch **fuori dal repo**, quindi non è consultabile: il dossier è l'unica fonte, e riporta
+per esteso il codice di ogni misura. Dove il JSDoc di Phaser e la misura non vanno d'accordo, in
 questo piano **vince la misura**, e il disaccordo è annotato.
 
 Cinque cose sono state trovate così, e ognuna cambia il codice che segue:
@@ -207,8 +208,10 @@ finché non passa, il plugin non va documentato come funzionante né pubblicato.
 ### Task 1: Il pacchetto plugin e l'anello jsdom
 
 Il task più rischioso del piano, quindi va per primo. Se questo non regge, niente altro
-regge. **È già stato provato che regge** (`scratchpad/jsdom-probe/`), quindi il compito qui
-è trascrivere una soluzione nota, non inventarne una.
+regge. **È già stato provato che regge**: la prova è stata costruita e fatta girare in una
+directory di scratch fuori dal repo, e il suo esito è riportato per esteso in
+`docs/recon/MISURATO-runtime.md`. Quindi il compito qui è trascrivere una soluzione nota —
+tutto il codice necessario è in questo task — non inventarne una.
 
 **Files:**
 - Create: `packages/plugin/package.json`
