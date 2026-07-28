@@ -3177,6 +3177,19 @@ Le quattro prove, tutte programmatiche:
    in cui la camera si è mossa (l'input usa la matrice del frame precedente). Se emerge una
    terza classe di divergenza, è un difetto nostro.
 
+   > **La terza classe è emersa davvero, e il gate ha fatto il suo lavoro (2026-07-28).**
+   > `picking.ts` arrotondava con `Math.round` su entrambi gli assi, dando a una cella
+   > `gy ∈ [n−0.5, n+0.5)`; la regola pnpoly semiaperta di `Polygon.Contains` dà al rombo
+   > `gy ∈ (n−0.5, n+0.5]` — **invertito sul solo asse `gy`**. Non era ambiguità: verificato
+   > su 640.000 punti, la tassellatura non ha un solo punto conteso né orfano, quindi la
+   > risposta del click è unica e `pick()` ne nominava semplicemente un'altra. **5.471 pixel
+   > della canvas — lo 0,79%, circa un click su 127** — divergevano in modo deterministico.
+   > Il primo tentativo l'aveva classificata come difetto del test ed esclusa dal campione;
+   > **la classificazione era sbagliata e l'esclusione era la mossa vietata.** Deciso:
+   > allineare `pick()` al click con una parità half-down su `gy`. La lezione che resta è
+   > che questo punto 4 è l'unica verifica del piano capace di scoprire una divergenza fra
+   > due API che rispondono alla stessa domanda — e l'ha scoperta.
+
 **Definition of Done:**
 - `pnpm e2e` verde in headless.
 - Le attese scritte **prima** dell'esecuzione, e il confronto con l'esito, sono nel report.
