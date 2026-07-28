@@ -211,6 +211,42 @@ describe('pick con minElevation (Finding 2)', () => {
     });
 });
 
+describe('pick sul confine condiviso fra due celle (parita\' half-down su gy)', () => {
+    // Scoperto confrontando pick() con un vero click in un browser reale
+    // (Task 12): su un punto con gy ESATTAMENTE n+0.5 (il confine condiviso
+    // fra le celle (gx,n) e (gx,n+1)), Math.round arrotonda in su, ma il
+    // rombo di Phaser (Polygon.Contains, regola pnpoly semiaperta) assegna
+    // quel bordo alla cella n — solo sull'asse gy, gx e' gia' d'accordo con
+    // Math.round. Questi test pinnano la convenzione direttamente, senza
+    // Phaser: `project(gx, n+0.5, 0)` costruisce il punto esatto del confine
+    // (project() non valida input frazionari), e pick() deve risolvere sulla
+    // cella che il rombo possiede — n, non n+1.
+    const flat = createHeightGrid(12, 12, 0);
+
+    it('un punto con gy esattamente n+0.5 risolve sulla cella n (round-down), non n+1', () => {
+        const s = proj.project(3, 5.5, 0);
+        expect(pick(proj, s.x, s.y, flat)).toEqual({ gx: 3, gy: 5, z: 0 });
+    });
+
+    it('gx esattamente n+0.5 risolve ancora su n+1 (round-up, Math.round invariato)', () => {
+        // Asimmetria intenzionale: solo gy si e' invertito per allinearsi al
+        // rombo. gx era gia' d'accordo con Math.round e non e' stato toccato.
+        const s = proj.project(3.5, 5, 0);
+        expect(pick(proj, s.x, s.y, flat)).toEqual({ gx: 4, gy: 5, z: 0 });
+    });
+
+    it('un punto con gy negativo esattamente n+0.5 risolve comunque sulla cella n', () => {
+        // -Math.round(-y) e' "meta' in giu'" per costruzione, non solo per
+        // valori positivi: verificato anche dal lato negativo dell'origine.
+        // HeightGrid non accetta coordinate negative (sempre null fuori da
+        // [0,width)x[0,height)), quindi qui serve una HeightSource nuda che
+        // dichiara pescabile ogni cella intera, come altrove in questo file.
+        const everywhereFlat: HeightSource = { heightAt: () => 0 };
+        const s = proj.project(3, -2.5, 0);
+        expect(pick(proj, s.x, s.y, everywhereFlat)).toEqual({ gx: 3, gy: -3, z: 0 });
+    });
+});
+
 describe('pick non restituisce -0 (Finding 7)', () => {
     it('un punto nella meta\' sinistra della cella (0,0) restituisce gx: 0, non gx: -0', () => {
         // round(-0.4) === -0 in JS. Object.is distingue -0 da +0, e alcune

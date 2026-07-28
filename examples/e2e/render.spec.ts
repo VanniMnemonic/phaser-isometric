@@ -20,6 +20,7 @@ const ARTIFACTS = path.join(here, 'artifacts');
 // calcolo indipendente, solo un secondo posto dove il valore deve vivere
 // finché scene.ts non separa i dati puri dal codice che importa Phaser.
 const ABYSS_CELL = { gx: 2, gy: 12 };
+const TOWER_CELL = { gx: 12, gy: 4, elevation: 3 };
 const TIEBREAK_CELL = { gx: 3, gy: 10 };
 const OVERLAP_BACK = { gx: 7, gy: 7 };
 const OVERLAP_FRONT = { gx: 8, gy: 7 };
@@ -133,8 +134,27 @@ test.describe('Proof 1 — real draw order', () => {
     });
 });
 
-test.describe('Proof 2 — roundPixels at fractional zoom', () => {
-    test('screen positions land on integer pixels at zoom 1.5, no seam at the tile edge', async ({ page }) => {
+/**
+ * FINDING (owned by this project, not just this test — Task 13 needs it):
+ * **`setRoundPixels(true)` does not protect you at fractional zoom in Phaser
+ * 4.2.1.** A `Sprite`'s default `vertexRoundMode` is `'safeAuto'`
+ * (`GameObject.js`), whose gate is `onlyTranslate && camera.roundPixels`
+ * (`phaser.esm.js:38579-38585`); `onlyTranslate` reads the COMBINED matrix
+ * (camera ⊗ sprite) and is `false` whenever the camera's own zoom is anything
+ * but `1`, because the camera's scale is baked into that matrix. So at zoom
+ * `1.5` the explicit `Math.round()` step in `TransformerImage` never runs —
+ * `camera.roundPixels` stays `true` the whole time, and it does nothing.
+ * This scene's quads still land on integer pixels at zoom 1.5 anyway,
+ * entirely because of its OWN numbers (tile size 96×48, canvas 960×720,
+ * every texture's dimensions even) — even deltas × 1.5 are exact integers in
+ * IEEE-754. That is a property of THIS scene, not a guarantee `roundPixels`
+ * gives you. The two tests below show both halves: the gap (rounding
+ * genuinely inert at zoom 1.5, yet clean by arithmetic) and the positive
+ * control (rounding genuinely engaged at zoom 1 with a fractional scroll,
+ * where toggling the flag visibly changes the rendered pixel).
+ */
+test.describe('Proof 2 — the roundPixels gap at fractional zoom', () => {
+    test('quads land on integer screen pixels at zoom 1.5 — by scene arithmetic, not by Phaser rounding (which is inert here)', async ({ page }) => {
         const { box, canvas } = await readyScene(page);
 
         const readMatrix = () => page.evaluate(() => {
@@ -204,6 +224,58 @@ test.describe('Proof 2 — roundPixels at fractional zoom', () => {
         expect(m15.e).toBeCloseTo(480, 9);
         expect(m15.f).toBeCloseTo(-216, 9);
 
+        // Quello che il brief chiede alla lettera: non la matrice della
+        // camera (che e' sempre esatta, rounding o no — non e' lei a essere
+        // arrotondata), ma le POSIZIONI SCHERMO CALCOLATE per sprite reali.
+        // Stessa formula di TransformerImage.run (phaser.esm.js, RenderNodes):
+        // corner_world = (sprite.x + lx, sprite.y + ly) con lx/ly gli offset
+        // locali dal displayOrigin, poi cam.matrixCombined.transformPoint —
+        // NESSUN Math.round applicato qui: se questi numeri sono interi lo
+        // sono per l'aritmetica della scena, non perche' il test li abbia
+        // arrotondati per farli combaciare.
+        const corners = await page.evaluate((args) => {
+            interface SpriteLike {
+                gx: number; gy: number; band: number;
+                x: number; y: number; width: number; height: number;
+                displayOriginX: number; displayOriginY: number;
+            }
+            const scene = window.__iso!.scene as unknown as {
+                sys: { displayList: { list: SpriteLike[] } };
+            };
+            const cam = window.__iso!.scene.cameras.main;
+            const list = scene.sys.displayList.list;
+
+            function cornersOf(o: SpriteLike): Array<{ x: number; y: number }> {
+                const lxs = [-o.displayOriginX, o.width - o.displayOriginX];
+                const lys = [-o.displayOriginY, o.height - o.displayOriginY];
+                const pts: Array<{ x: number; y: number }> = [];
+                for (const lx of lxs) {
+                    for (const ly of lys) {
+                        pts.push(cam.matrixCombined.transformPoint(o.x + lx, o.y + ly));
+                    }
+                }
+                return pts;
+            }
+
+            const back = list.find(o => o.gx === args.backGx && o.gy === args.backGy && o.band === args.actorBand);
+            const front = list.find(o => o.gx === args.frontGx && o.gy === args.frontGy && o.band === args.actorBand);
+            const floor77 = list.find(o => o.gx === args.backGx && o.gy === args.backGy && o.band === 0);
+            if (!back || !front || !floor77) throw new Error('sprite non trovato nel display list');
+
+            return { back: cornersOf(back), front: cornersOf(front), floor77: cornersOf(floor77) };
+        }, {
+            backGx: OVERLAP_BACK.gx, backGy: OVERLAP_BACK.gy,
+            frontGx: OVERLAP_FRONT.gx, frontGy: OVERLAP_FRONT.gy,
+            actorBand: BANDS.actor
+        });
+
+        for (const [label, pts] of Object.entries(corners)) {
+            for (const pt of pts) {
+                expect(Number.isInteger(pt.x), `${label}: corner x=${pt.x} non intero a zoom 1.5`).toBe(true);
+                expect(Number.isInteger(pt.y), `${label}: corner y=${pt.y} non intero a zoom 1.5`).toBe(true);
+            }
+        }
+
         // Stesso bordo e stesso punto mondo (x=-32,y=320) a zoom 1.5:
         // screenX = 1.5*(-32+480)-240 = 672-240 = 432 (bordo);
         // screenY = 1.5*(320-24)-180 = 444-180 = 264 (riga pulita, stessa scelta di sopra).
@@ -234,6 +306,58 @@ test.describe('Proof 2 — roundPixels at fractional zoom', () => {
             expect(sawFloor, `${label}: la scansione non ha mai visto il pavimento`).toBe(true);
             expect(sawBack, `${label}: la scansione non ha mai visto BACK`).toBe(true);
         }
+    });
+
+    test('positive control: at zoom 1 with a fractional scroll, rounding genuinely engages and toggling it changes the pixel', async ({ page }) => {
+        // A zoom 1 la matrice ha scala 1 (nessuno zoom, nessuna rotazione):
+        // onlyTranslate e' vero, quindi qui — a differenza del test sopra —
+        // `willRoundVertices` dipende DAVVERO da `camera.roundPixels`. Sposto
+        // scrollX di un valore non intero (0.3) cosi' il bordo sinistro di
+        // BACK (mondo x=-32, prima a schermo 448 esatto) cade su un pixel
+        // frazionario: screenX = -32 - (-480+0.3) = 447.7. Con il rounding
+        // attivo Math.round lo riporta a 448 (nessun pareggio: 0.7 arrotonda
+        // in su banalmente) — bordo netto, come prima. Con il rounding
+        // disattivo il bordo resta a 447.7, e l'antialiasing di WebGL DEVE
+        // produrre un pixel misto nella colonna 447 — questo e' il test che
+        // il proof sopra non poteva dare da solo: la prova che il flag, dove
+        // puo' agire, agisce davvero.
+        const { box, canvas } = await readyScene(page);
+
+        await page.evaluate(() => {
+            window.__iso!.scene.cameras.main.scrollX = -480 + 0.3;
+        });
+        await waitFrames(page, 3);
+
+        const scanPoints = range(438, 458).map(x => ({ x, y: 296 })); // stesso mondo y=320 "solo BACK" di sopra
+
+        const withRounding = await page.evaluate(() => window.__iso!.scene.cameras.main.roundPixels);
+        expect(withRounding, 'la scena parte con roundPixels:true').toBe(true);
+        const roundedShot = await canvas.screenshot({ path: path.join(ARTIFACTS, 'proof2-control-rounded.png') });
+        const roundedPixels = await samplePixels(page, roundedShot, scanPoints);
+
+        await page.evaluate(() => { window.__iso!.scene.cameras.main.setRoundPixels(false); });
+        await waitFrames(page, 3);
+        const unroundedShot = await canvas.screenshot({ path: path.join(ARTIFACTS, 'proof2-control-unrounded.png') });
+        const unroundedPixels = await samplePixels(page, unroundedShot, scanPoints);
+
+        const isPureColor = (pixel: RGBA): boolean => closeTo(pixel, FLOOR_COLOR) || closeTo(pixel, BACK_COLOR);
+
+        // Con il rounding attivo: nessun pixel misto, esattamente come nel
+        // proof sopra (qui pero' e' un vero effetto del flag, non aritmetica).
+        for (const pixel of roundedPixels) {
+            expect(isPureColor(pixel), `roundPixels:true ma pixel misto inatteso ${JSON.stringify(pixel)}`).toBe(true);
+        }
+
+        // Con il rounding disattivo: DEVE comparire almeno un pixel misto —
+        // se non compare, il flag non stava facendo nulla neanche qui, e il
+        // controllo positivo non avrebbe dimostrato niente.
+        const blendedWithoutRounding = unroundedPixels.some(pixel => !isPureColor(pixel));
+        expect(blendedWithoutRounding, 'nessun pixel misto senza rounding: il controllo positivo non ha dimostrato che il flag agisce').toBe(true);
+
+        await page.screenshot({
+            path: path.join(ARTIFACTS, 'proof2-control-crop-unrounded.png'),
+            clip: { x: box.x + 428, y: box.y + 276, width: 40, height: 40 }
+        });
     });
 });
 
@@ -266,47 +390,30 @@ test.describe('Proof 3 — the click on the diamond', () => {
         expect(afterMiss.lastClickedCell).toBeNull();
         expect(afterMiss.pointerDownCount).toBe(2);
 
+        // Secondo testimone del miss, STRETTAMENTE interno al rettangolo del
+        // frame — non sul suo angolo esatto. Il punto sopra funziona solo
+        // perche' `Rectangle.Contains` di Phaser e' inclusivo sui bordi: con
+        // un ipotetico `<` stretto (o una diversa libreria di hit-test)
+        // quell'angolo esatto potrebbe risultare un falso "fuori dal
+        // rettangolo" anche con un banale rombo rotto sostituito da un
+        // rettangolo — un falso PASS che non proverebbe nulla sul rombo
+        // vero. Schermo (10,316) -> mondo (10-480,316+24) = (-470,340):
+        // dentro il rettangolo di (3,12) (world x in [-480,-384], y in
+        // [336,384], entrambi con margine reale, non sul bordo) ma la sua
+        // cella per arrotondamento e' (2,12) = ABYSS_CELL, senza sprite —
+        // fuori dal rombo di (3,12) e senza alcun vicino che lo catturi.
+        const interiorMiss = toPage(box, 10, 316);
+        await page.mouse.click(interiorMiss.x, interiorMiss.y);
+        const afterInteriorMiss = await readClickState(page);
+        expect(afterInteriorMiss.lastClickedCell).toBeNull();
+        expect(afterInteriorMiss.pointerDownCount).toBe(3);
+
         await page.screenshot({
             path: path.join(ARTIFACTS, 'proof3-target-and-abyss.png'),
             clip: { x: box.x, y: box.y + 288, width: 110, height: 96 }
         });
     });
 });
-
-/**
- * gx/gy esatti (zoom 1, scrollX=-480, scrollY=24) per uno screen point
- * intero, con la stessa formula di `unprojectInto`
- * (packages/core/src/projection.ts): a=48,b=24,c=-48,d=24,det=2304.
- */
-function gridOf(screenX: number, screenY: number): { gx: number; gy: number } {
-    const worldX = screenX - 480;
-    const worldY = screenY + 24;
-    const gx = (24 * worldX + 48 * worldY) / 2304;
-    const gy = (-24 * worldX + 48 * worldY) / 2304;
-    return { gx, gy };
-}
-
-/**
- * Vero solo su un pareggio ESATTO (frazione 0.5 su gx o gy): il punto giace
- * matematicamente sul confine condiviso fra due celle. Scoperto eseguendo,
- * non previsto: screen (102,147) -> world (-378,171) -> gy = 17280/2304 = 7.5
- * esatto (nessun rumore in virgola mobile, entrambi i numeratori sono
- * multipli di potenze di 2) dava `iso.pick()` -> {gx:0,gy:8} (Math.round
- * arrotonda 7.5 in su) contro un click reale -> {gx:0,gy:7}. `pick()` e il
- * rombo di Phaser (`Polygon.Contains`, bordi half-open) sono due algoritmi
- * indipendenti che sul BORDO — non all'interno, dove il commento di
- * `projection.ts` garantisce che coincidono esattamente — non hanno mai
- * promesso lo stesso criterio di pareggio. Escludere questi punti non
- * nasconde una divergenza: la sposta a un confronto che ha davvero una
- * risposta univoca, invece di un pareggio matematico a cui NESSUNA delle due
- * implementazioni può "vincere" in modo canonico.
- */
-function isExactBoundaryTie(screenX: number, screenY: number): boolean {
-    const { gx, gy } = gridOf(screenX, screenY);
-    const fracGx = Math.abs(gx - Math.round(gx));
-    const fracGy = Math.abs(gy - Math.round(gy));
-    return Math.abs(fracGx - 0.5) < 1e-9 || Math.abs(fracGy - 0.5) < 1e-9;
-}
 
 test.describe('Proof 4 — iso.pick() vs. the real click, 20 points', () => {
     test('agree on all 20 pseudo-random points', async ({ page }) => {
@@ -326,13 +433,17 @@ test.describe('Proof 4 — iso.pick() vs. the real click, 20 points', () => {
             bottom: buttonBox.y - box.y + buttonBox.height + 4
         };
 
+        // Nessuna esclusione oltre al bottone: il pareggio geometrico esatto
+        // (gy = n+0.5) che un round precedente escludeva era in realta' un
+        // difetto del plugin, non del test — corretto allineando `pick()` al
+        // click (packages/core/src/picking.ts, parita' half-down su gy). I
+        // venti punti devono ora concordare senza alcuna eccezione.
         const rand = mulberry32(0xc0ffee);
         const points: Array<{ x: number; y: number }> = [];
         while (points.length < 20) {
             const x = Math.floor(rand() * CANVAS_WIDTH);
             const y = Math.floor(rand() * CANVAS_HEIGHT);
             if (x >= exclude.left && x <= exclude.right && y >= exclude.top && y <= exclude.bottom) continue;
-            if (isExactBoundaryTie(x, y)) continue;
             points.push({ x, y });
         }
 
@@ -346,7 +457,8 @@ test.describe('Proof 4 — iso.pick() vs. the real click, 20 points', () => {
         }
         const rows: Row[] = [];
 
-        for (const p of points) {
+        for (let i = 0; i < points.length; i += 1) {
+            const p = points[i];
             // world via camera.getWorldPoint: lo STESSO metodo che
             // InputManager#hitTest usa per calcolare pointer.worldX/worldY
             // (phaser.esm.js:112812) — non una reinversione a mano che
@@ -360,7 +472,14 @@ test.describe('Proof 4 — iso.pick() vs. the real click, 20 points', () => {
 
             const pagePoint = toPage(box, p.x, p.y);
             await page.mouse.click(pagePoint.x, pagePoint.y);
-            const click = (await readClickState(page)).lastClickedCell;
+            const state = await readClickState(page);
+            // Un click che non registra (swallowed) lascerebbe lastClickedCell
+            // fermo al valore del click PRECEDENTE, e il confronto leggerebbe
+            // silenziosamente un dato stantio invece di accorgersene: per
+            // questo pointerDownCount — che conta ogni pointerdown, hit o miss
+            // — deve avanzare di uno a ogni iterazione, non solo essere > 0.
+            expect(state.pointerDownCount, `click ${i} (screen ${p.x},${p.y}) non ha incrementato pointerDownCount`).toBe(i + 1);
+            const click = state.lastClickedCell;
 
             rows.push({ x: p.x, y: p.y, worldX, worldY, pick, click: click ? { gx: click.gx, gy: click.gy } : null });
         }
@@ -388,5 +507,35 @@ test.describe('Proof 4 — iso.pick() vs. the real click, 20 points', () => {
         }
 
         expect(mismatches, JSON.stringify(rows, null, 2)).toEqual([]);
+    });
+
+    test('agree on the tower\'s own elevated top face, not just floor-level points', async ({ page }) => {
+        // Il campione casuale di 20 punti non garantisce di toccare MAI la
+        // torre (prima di questo fix nemmeno poteva: nessuna area di hit),
+        // quindi l'assenza di una quarta classe di divergenza nella tabella
+        // sopra sarebbe stata un incidente del campionamento, non un fatto —
+        // questo test la esercita apposta. TOWER_CELL sta a quota 3: un click
+        // sulla sua cima deve far percorrere DAVVERO a `iso.pick()` il ciclo
+        // delle quote (z da maxElevation=3 in giu') fino a trovare la quota
+        // giusta, e il click reale deve concordare.
+        const { box } = await readyScene(page);
+
+        // project(12,4,3) = (48*12-48*4, 24*12+24*4-3*24) = (384,312) -> schermo (864,288).
+        const towerPoint = toPage(box, 864, 288);
+
+        const { worldX, worldY, pick } = await page.evaluate((point) => {
+            const hook = window.__iso!;
+            const world = hook.scene.cameras.main.getWorldPoint(point.x, point.y);
+            const cell = hook.iso.pick(world.x, world.y);
+            return { worldX: world.x, worldY: world.y, pick: cell };
+        }, { x: 864, y: 288 });
+
+        expect({ worldX, worldY }).toEqual({ worldX: 384, worldY: 312 });
+        expect(pick).toEqual({ gx: TOWER_CELL.gx, gy: TOWER_CELL.gy, z: TOWER_CELL.elevation });
+
+        await page.mouse.click(towerPoint.x, towerPoint.y);
+        const click = await readClickState(page);
+        expect(click.lastClickedCell).toEqual({ gx: TOWER_CELL.gx, gy: TOWER_CELL.gy });
+        expect(click.pointerDownCount).toBe(1);
     });
 });

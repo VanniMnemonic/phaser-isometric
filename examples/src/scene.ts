@@ -131,9 +131,18 @@ export class PlaygroundScene extends Phaser.Scene {
 
         // La torre: un prop più alto sull'unica cella con una quota nota e
         // non nulla, utile sia per `pick()` sia per i controlli di
-        // `cameraBounds()`.
-        this.add.isoSprite(TOWER_CELL.gx, TOWER_CELL.gy, 'tower')
+        // `cameraBounds()`. Anche lei riceve un'area di hit a diamante — senza,
+        // un click sulla sua cima non avrebbe nulla da riportare mentre
+        // `iso.pick()` risale il ciclo delle quote e trova {12,4,z:3}, e il
+        // confronto pick()-vs-click del Task 12 non eserciterebbe mai quel
+        // ciclo contro un vero click. `place()` proietta il centro dello
+        // sprite esattamente su `project(gx,gy,elevation)` (origine 0.5,0.5
+        // di default), quindi il diamante di default — stesso punto, stessa
+        // dimensione della proiezione — cade esattamente dove `pick()` risolve
+        // a quella quota, non dove serve indovinare.
+        const tower = this.add.isoSprite(TOWER_CELL.gx, TOWER_CELL.gy, 'tower')
             .setCell(TOWER_CELL.gx, TOWER_CELL.gy, TOWER_CELL.elevation, this.iso.bands.prop);
+        this.iso.makeDiamondHitArea(tower);
 
         // Terzetto per il tie-break: stessa cella, tre bande diverse,
         // completamente sovrapposti a schermo (stesso punto proiettato).
