@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createHeightGrid } from 'phaser-isometric';
+import { createHeightGrid, IsoSprite } from 'phaser-isometric';
 import type { IsoPlugin, IsoSnapshot } from 'phaser-isometric';
 
 /**
@@ -24,13 +24,13 @@ const TILE_WIDTH = 96;
 const TILE_HEIGHT = 48;
 
 /** The one cell with a non-zero, known elevation — the "tower". */
-const TOWER_CELL = { gx: 12, gy: 4, elevation: 3 };
+export const TOWER_CELL = { gx: 12, gy: 4, elevation: 3 };
 
 /** The one cell with NO ground — `heightAt` returns `null` here, not `0`. */
-const ABYSS_CELL = { gx: 2, gy: 12 };
+export const ABYSS_CELL = { gx: 2, gy: 12 };
 
 /** Same cell, three bands — isolates the depth tie-break from the row term. */
-const TIEBREAK_CELL = { gx: 3, gy: 10 };
+export const TIEBREAK_CELL = { gx: 3, gy: 10 };
 
 /**
  * The pair the draw-order gate measures. Adjacent along `gx`, chosen because
@@ -55,11 +55,11 @@ const TIEBREAK_CELL = { gx: 3, gy: 10 };
  * BACK paints first and FRONT paints over it: inside the overlap rectangle
  * above, a correct renderer shows FRONT's colour, never BACK's.
  */
-const OVERLAP_BACK = { gx: 7, gy: 7 };
-const OVERLAP_FRONT = { gx: 8, gy: 7 };
+export const OVERLAP_BACK = { gx: 7, gy: 7 };
+export const OVERLAP_FRONT = { gx: 8, gy: 7 };
 
-const CANVAS_WIDTH = 960;
-const CANVAS_HEIGHT = 720;
+export const CANVAS_WIDTH = 960;
+export const CANVAS_HEIGHT = 720;
 
 function makeSolidTexture(scene: Phaser.Scene, key: string, width: number, height: number, color: number): void {
     const g = scene.add.graphics();
@@ -80,6 +80,12 @@ export class PlaygroundScene extends Phaser.Scene {
      *  event landed on the polygon, not just anywhere on the sprite's frame. */
     clickCount = 0;
 
+    /** The cell of whichever `IsoSprite` Phaser's input system last delivered
+     *  a `pointerdown` to. `null` until the first click. Compare this against
+     *  `iso.pick(worldX, worldY)` at the same point to check that Phaser's
+     *  own hit-testing and this plugin's picking agree. */
+    lastClickedCell: { gx: number; gy: number } | null = null;
+
     create(): void {
         this.iso.configure({ type: 'diamond', tileWidth: TILE_WIDTH, tileHeight: TILE_HEIGHT });
 
@@ -97,24 +103,33 @@ export class PlaygroundScene extends Phaser.Scene {
         makeSolidTexture(this, 'band-actor', 32, 32, 0xffb703);
         makeSolidTexture(this, 'band-hero', 32, 32, 0xfb8500);
 
-        // One IsoSprite per cell, minus the abyss: there is nothing to stand
-        // on there, which is the entire point of `null` in a HeightSource.
+        // Un IsoSprite per cella, meno l'abisso: lì non c'è nulla su cui
+        // stare in piedi, che è esattamente il senso di `null` in una
+        // HeightSource. Ogni tile riceve anche la propria area di hit a
+        // diamante: è la superficie cliccabile su cui il Task 12 confronta,
+        // per venti punti pseudo-casuali, la cella riportata dall'handler di
+        // Phaser con quella di `iso.pick()` — senza hit area sui tile, la
+        // stragrande maggioranza di quei punti non avrebbe nulla da
+        // riportare, e il confronto sarebbe teatro.
         for (let gy = 0; gy < GRID_SIZE; gy += 1) {
             for (let gx = 0; gx < GRID_SIZE; gx += 1) {
                 const h = heights.heightAt(gx, gy);
                 if (h === null) continue;
-                this.add.isoSprite(gx, gy, 'floor').setCell(gx, gy, h, this.iso.bands.floor);
+                const tile = this.add.isoSprite(gx, gy, 'floor').setCell(gx, gy, h, this.iso.bands.floor);
+                this.iso.makeDiamondHitArea(tile);
             }
         }
 
-        // The tower: a taller prop at the one cell with a known non-zero
-        // elevation, useful for both `pick()` and `cameraBounds()` checks.
+        // La torre: un prop più alto sull'unica cella con una quota nota e
+        // non nulla, utile sia per `pick()` sia per i controlli di
+        // `cameraBounds()`.
         this.add.isoSprite(TOWER_CELL.gx, TOWER_CELL.gy, 'tower')
             .setCell(TOWER_CELL.gx, TOWER_CELL.gy, TOWER_CELL.elevation, this.iso.bands.prop);
 
-        // Tie-break trio: same cell, three different bands, fully overlapping
-        // on screen (same projected point). `hero` (band 5) is the highest
-        // of the three, so it must be the one fully visible on top.
+        // Terzetto per il tie-break: stessa cella, tre bande diverse,
+        // completamente sovrapposti a schermo (stesso punto proiettato).
+        // `hero` (banda 5) è la più alta delle tre, quindi deve essere
+        // l'unica pienamente visibile sopra le altre.
         this.add.isoSprite(TIEBREAK_CELL.gx, TIEBREAK_CELL.gy, 'band-decal')
             .setCell(TIEBREAK_CELL.gx, TIEBREAK_CELL.gy, 0, this.iso.bands.decal);
         this.add.isoSprite(TIEBREAK_CELL.gx, TIEBREAK_CELL.gy, 'band-actor')
@@ -122,21 +137,35 @@ export class PlaygroundScene extends Phaser.Scene {
         const hero = this.add.isoSprite(TIEBREAK_CELL.gx, TIEBREAK_CELL.gy, 'band-hero')
             .setCell(TIEBREAK_CELL.gx, TIEBREAK_CELL.gy, 0, this.iso.bands.hero);
 
-        // The overlap pair the draw-order gate measures — see the module
-        // comment above for the arithmetic proving they overlap on screen.
+        // La coppia di sovrapposizione su cui il gate misura l'ordine di
+        // disegno — vedi il commento del modulo sopra per l'aritmetica che
+        // dimostra la sovrapposizione a schermo.
         this.add.isoSprite(OVERLAP_BACK.gx, OVERLAP_BACK.gy, 'back')
             .setCell(OVERLAP_BACK.gx, OVERLAP_BACK.gy, 0, this.iso.bands.actor);
         this.add.isoSprite(OVERLAP_FRONT.gx, OVERLAP_FRONT.gy, 'front')
             .setCell(OVERLAP_FRONT.gx, OVERLAP_FRONT.gy, 0, this.iso.bands.actor);
 
-        // A real, clickable diamond hit area. `camera.renderList` stays empty
-        // under HEADLESS and `input.hitTest` does not exist in Phaser 4, so
-        // this is provably not testable without an actual pointer event in a
-        // real browser.
+        // Un'area di hit a diamante realmente cliccabile su `hero`.
+        // `camera.renderList` resta vuota sotto HEADLESS e `input.hitTest`
+        // non esiste in Phaser 4, quindi questo non è dimostrabilmente
+        // testabile senza un vero evento di puntatore in un browser reale.
         this.iso.makeDiamondHitArea(hero);
-        hero.on('pointerdown', () => {
-            this.clickCount += 1;
-            hero.setTint(0x00ff00);
+
+        // Un solo handler a livello di scena invece di uno per sprite: con
+        // `topOnly` (il default di Phaser) l'evento arriva comunque a un
+        // solo oggetto per click, e ogni IsoSprite porta già gx/gy — non
+        // serve una chiusura per tile. `hero` in più incrementa clickCount e
+        // si tinge di verde: è la prova specifica del click reale sull'area
+        // a diamante, distinta dal confronto generico pick()-vs-click sopra.
+        this.input.on(Phaser.Input.Events.GAMEOBJECT_DOWN, (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
+            if (!(gameObject instanceof IsoSprite)) return;
+
+            this.lastClickedCell = { gx: gameObject.gx, gy: gameObject.gy };
+
+            if (gameObject === hero) {
+                this.clickCount += 1;
+                hero.setTint(0x00ff00);
+            }
         });
 
         this.cameras.main.setRoundPixels(true);
@@ -152,9 +181,10 @@ export class PlaygroundScene extends Phaser.Scene {
         };
     }
 
-    /** Wires the `#zoom-toggle` DOM button to alternate the main camera
-     *  between zoom 1 and 1.5 — the case `roundPixels` actually matters for,
-     *  since at zoom 1 every screen position is already a whole pixel. */
+    /** Collega il pulsante DOM `#zoom-toggle` per alternare la camera
+     *  principale fra zoom 1 e 1.5 — il caso in cui `roundPixels` conta
+     *  davvero, dato che a zoom 1 ogni posizione a schermo è già un pixel
+     *  intero. */
     private wireZoomToggle(): void {
         const button = document.getElementById('zoom-toggle');
         if (!button) return;
@@ -166,5 +196,3 @@ export class PlaygroundScene extends Phaser.Scene {
         });
     }
 }
-
-export { CANVAS_WIDTH, CANVAS_HEIGHT };
