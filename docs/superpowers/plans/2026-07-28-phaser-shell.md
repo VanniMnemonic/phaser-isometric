@@ -2601,7 +2601,8 @@ git commit -m "Piano 2 Task 7: rombo puro nel core, cablaggio nel guscio"
 ```
 
 **Definition of Done:**
-- 10 test nuovi; totale **170**. (4 nel core in `node`, 6 nel guscio in `jsdom`.)
+- 12 test nuovi; totale **172**. (6 nel core in `node`, 6 nel guscio in `jsdom`; due dei
+  sei del core aggiunti in review, per i rami di validazione scoperti.)
 - `packages/core/test/purity.test.ts` resta verde: `hit-area.ts` non importa Phaser.
 - L'assert di uguaglianza sulla superficie del core è aggiornato.
 - Il report dichiara esplicitamente che il click **non** è verificato.
@@ -2777,7 +2778,7 @@ Run: `npx vitest run` → **172** test. `pnpm typecheck` → 0.
 git commit -m "Piano 2 Task 8: pick() e cull() sulla scena"
 ```
 
-**Definition of Done:** 8 test nuovi, totale **178**; le tre mutazioni provate; `cull()` non
+**Definition of Done:** 8 test nuovi, totale **180**; le tre mutazioni provate; `cull()` non
 legge mai `worldView`.
 
 ---
@@ -2867,7 +2868,7 @@ Run: `npx vitest run` → **179** test.
 git commit -m "Piano 2 Task 9: snapshot(), piano e serializzabile"
 ```
 
-**Definition of Done:** 7 test nuovi, totale **185**; il round-trip JSON passa; `snapshot()`
+**Definition of Done:** 7 test nuovi, totale **187**; il round-trip JSON passa; `snapshot()`
 non lancia in nessuno stato, nemmeno dopo `destroy()`.
 
 ---
@@ -3236,8 +3237,8 @@ soddisfa strutturalmente. `DiamondTarget` (Task 7) nomina i sei membri che
 `applyDiamondHitArea` usa. `HeightSource` viene dal core e non è ridefinito. `elevation`,
 non `z`, in tutti i task dal 5 in poi.
 
-**Conteggio dei test**, cumulativo: 105 → 120 → 126 → 137 → 148 → 160 → 170 → 178 → 185 →
-186. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
+**Conteggio dei test**, cumulativo: 105 → 120 → 126 → 137 → 148 → 160 → 172 → 180 → 187 →
+188. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
 aggiustare il conteggio: nel Piano 1 un conteggio sbagliato nel piano fu segnalato da un
 implementer che si rifiutò di inventare un test, ed era la risposta giusta.
 
