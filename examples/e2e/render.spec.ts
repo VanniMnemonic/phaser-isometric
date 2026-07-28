@@ -510,14 +510,24 @@ test.describe('Proof 4 — iso.pick() vs. the real click, 20 points', () => {
     });
 
     test('agree on the tower\'s own elevated top face, not just floor-level points', async ({ page }) => {
-        // Il campione casuale di 20 punti non garantisce di toccare MAI la
-        // torre (prima di questo fix nemmeno poteva: nessuna area di hit),
-        // quindi l'assenza di una quarta classe di divergenza nella tabella
-        // sopra sarebbe stata un incidente del campionamento, non un fatto —
-        // questo test la esercita apposta. TOWER_CELL sta a quota 3: un click
-        // sulla sua cima deve far percorrere DAVVERO a `iso.pick()` il ciclo
-        // delle quote (z da maxElevation=3 in giu') fino a trovare la quota
-        // giusta, e il click reale deve concordare.
+        // CORREZIONE (fix round 2): il commento qui affermava che senza
+        // un'area di hit sulla torre un click sulla sua cima "non avrebbe
+        // nulla da riportare". Falso, e la re-review l'ha trovato: il tile
+        // pavimento su TOWER_CELL e' piazzato alla SUA stessa quota
+        // (`h = heights.heightAt(gx,gy)` nel loop dei pavimenti, non un fisso
+        // z=0), quindi possiede gia' un'area di hit a diamante esattamente
+        // nella stessa posizione a schermo della torre — un click li' ha
+        // SEMPRE riportato {12,4}, con o senza l'area di hit propria della
+        // torre. Quello che questo test dimostra davvero e' che `iso.pick()`
+        // percorre per intero il ciclo delle quote: un pick che si fermasse a
+        // z=0 risponderebbe {11,2} su questo stesso punto (gx=10.5 e gy=2.5
+        // sono ENTRAMBI pareggi esatti a z=0 — coincidenza geometrica di
+        // questo punto, non generale — e la parita' half-up/half-down li
+        // risolve a 11 e 2), non {12,4}. Il campione casuale di 20 punti non
+        // garantisce di toccare MAI la torre, quindi l'assenza di una quarta
+        // classe di divergenza nella tabella sopra sarebbe stata un
+        // incidente del campionamento, non un fatto — questo test esercita
+        // apposta il ciclo delle quote contro un click vero.
         const { box } = await readyScene(page);
 
         // project(12,4,3) = (48*12-48*4, 24*12+24*4-3*24) = (384,312) -> schermo (864,288).

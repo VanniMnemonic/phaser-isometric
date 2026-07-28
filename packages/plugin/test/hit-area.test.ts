@@ -2,6 +2,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
 import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
+import { createHeightGrid, tileSizeOf } from '@iso-internal/core';
+import type { IsoSprite } from '../src/iso-sprite';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
@@ -109,5 +111,101 @@ describe('makeDiamondHitArea', () => {
         const scene = await conIso();
         const s = scene.add.isoSprite(0, 0, '__DEFAULT');
         expect(scene.iso.makeDiamondHitArea(s)).toBe(s);
+    });
+});
+
+describe('il rombo vero e pick() concordano sul confine condiviso (Task 12 fix round 2)', () => {
+    // I tre test aggiunti a picking.test.ts (Task 12 fix round 1) pinnano la
+    // CONVENZIONE di pick() (-Math.round(-y)+0 su gy) ma non chiamano mai
+    // Phaser: se la derivazione della meta' del rombo fosse stata al
+    // contrario, quei test l'avrebbero pinnata comunque, felicemente
+    // sbagliata. Qui si chiude il cerchio per davvero: si costruisce il
+    // rombo con `makeDiamondHitArea` (lo stesso codice che gira in
+    // produzione), si chiama `Phaser.Geom.Polygon.Contains` — non una sua
+    // reimplementazione — e si confronta il suo verdetto con quello di
+    // `iso.pick()` sullo STESSO punto esatto di confine.
+
+    async function conCelleAdiacenti(): Promise<Phaser.Scene> {
+        const scene = await conIso();
+        scene.iso.setHeights(createHeightGrid(8, 8, 0));
+        return scene;
+    }
+
+    function pescabile(scene: Phaser.Scene, gx: number, gy: number): IsoSprite {
+        const s = scene.add.isoSprite(gx, gy, '__DEFAULT').setCell(gx, gy, 0, scene.iso.bands.floor);
+        scene.iso.makeDiamondHitArea(s);
+        return s;
+    }
+
+    /** Il punto MONDO nello spazio frame-locale che la hitAreaCallback riceve
+     *  davvero: origine display gia' sommata (vedi hit-area.ts del core). */
+    function frameLocale(s: IsoSprite, worldX: number, worldY: number): { x: number; y: number } {
+        return { x: (worldX - s.x) + s.displayOriginX, y: (worldY - s.y) + s.displayOriginY };
+    }
+
+    it('gy = n+0.5: il rombo E pick() concordano sulla cella n, non n+1', async () => {
+        const scene = await conCelleAdiacenti();
+        const bassa = pescabile(scene, 3, 5); // n
+        const alta = pescabile(scene, 3, 6);  // n+1
+
+        // project() non valida input frazionari: costruisce il punto esatto
+        // del confine condiviso, non un'approssimazione.
+        const confine = scene.iso.projection.project(3, 5.5, 0);
+
+        const puntoInBassa = frameLocale(bassa, confine.x, confine.y);
+        const puntoInAlta = frameLocale(alta, confine.x, confine.y);
+
+        expect(Phaser.Geom.Polygon.Contains(bassa.input!.hitArea as Phaser.Geom.Polygon, puntoInBassa.x, puntoInBassa.y)).toBe(true);
+        expect(Phaser.Geom.Polygon.Contains(alta.input!.hitArea as Phaser.Geom.Polygon, puntoInAlta.x, puntoInAlta.y)).toBe(false);
+
+        // Lo stesso punto, passato a pick(): deve nominare la STESSA cella
+        // che il rombo vero ha appena rivendicato sopra.
+        expect(scene.iso.pick(confine.x, confine.y)).toEqual({ gx: 3, gy: 5, z: 0 });
+    });
+
+    it('gx = n+0.5: il rombo E pick() concordano sulla cella n+1 (asse invariato, non toccato dal fix)', async () => {
+        const scene = await conCelleAdiacenti();
+        const sinistra = pescabile(scene, 3, 5); // n
+        const destra = pescabile(scene, 4, 5);   // n+1
+
+        const confine = scene.iso.projection.project(3.5, 5, 0);
+
+        const puntoInSinistra = frameLocale(sinistra, confine.x, confine.y);
+        const puntoInDestra = frameLocale(destra, confine.x, confine.y);
+
+        expect(Phaser.Geom.Polygon.Contains(sinistra.input!.hitArea as Phaser.Geom.Polygon, puntoInSinistra.x, puntoInSinistra.y)).toBe(false);
+        expect(Phaser.Geom.Polygon.Contains(destra.input!.hitArea as Phaser.Geom.Polygon, puntoInDestra.x, puntoInDestra.y)).toBe(true);
+
+        expect(scene.iso.pick(confine.x, confine.y)).toEqual({ gx: 4, gy: 5, z: 0 });
+    });
+
+    it('dei quattro vertici del rombo, solo quello sinistro appartiene al proprio rombo', async () => {
+        // Un vertice e' un pareggio su ENTRAMBI gli assi insieme (un angolo a
+        // 4 vie fra celle), un caso piu' composto dei confini a un solo asse
+        // sopra. Verificato con l'algoritmo pnpoly reale di Phaser prima di
+        // scrivere questo test (non assunto): dei quattro vertici del rombo
+        // (alto, destro, basso, sinistro), SOLO il sinistro risulta dentro il
+        // proprio poligono — l'asimmetria che una derivazione futura
+        // potrebbe rompere senza accorgersene, se nulla la pinna.
+        const scene = await conIso();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+        scene.iso.makeDiamondHitArea(s);
+
+        const poly = s.input!.hitArea as Phaser.Geom.Polygon;
+        const { tileWidth, tileHeight } = tileSizeOf(scene.iso.projection);
+        const hw = tileWidth / 2;
+        const hh = tileHeight / 2;
+        const cx = s.displayOriginX;
+        const cy = s.displayOriginY;
+
+        const alto = { x: cx, y: cy - hh };
+        const destro = { x: cx + hw, y: cy };
+        const basso = { x: cx, y: cy + hh };
+        const sinistro = { x: cx - hw, y: cy };
+
+        expect(Phaser.Geom.Polygon.Contains(poly, alto.x, alto.y)).toBe(false);
+        expect(Phaser.Geom.Polygon.Contains(poly, destro.x, destro.y)).toBe(false);
+        expect(Phaser.Geom.Polygon.Contains(poly, basso.x, basso.y)).toBe(false);
+        expect(Phaser.Geom.Polygon.Contains(poly, sinistro.x, sinistro.y)).toBe(true);
     });
 });

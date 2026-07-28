@@ -131,15 +131,23 @@ export class PlaygroundScene extends Phaser.Scene {
 
         // La torre: un prop più alto sull'unica cella con una quota nota e
         // non nulla, utile sia per `pick()` sia per i controlli di
-        // `cameraBounds()`. Anche lei riceve un'area di hit a diamante — senza,
-        // un click sulla sua cima non avrebbe nulla da riportare mentre
-        // `iso.pick()` risale il ciclo delle quote e trova {12,4,z:3}, e il
-        // confronto pick()-vs-click del Task 12 non eserciterebbe mai quel
-        // ciclo contro un vero click. `place()` proietta il centro dello
-        // sprite esattamente su `project(gx,gy,elevation)` (origine 0.5,0.5
-        // di default), quindi il diamante di default — stesso punto, stessa
-        // dimensione della proiezione — cade esattamente dove `pick()` risolve
-        // a quella quota, non dove serve indovinare.
+        // `cameraBounds()`. Anche lei riceve un'area di hit a diamante.
+        // CORREZIONE (fix round 2): questo commento diceva che senza
+        // quell'area un click sulla cima "non avrebbe nulla da riportare" —
+        // falso. Il tile pavimento su questa stessa cella e' piazzato alla
+        // SUA quota (`h = heights.heightAt(gx, gy)` nel loop qui sopra, non
+        // un fisso z=0), quindi possiede gia' un'area di hit esattamente
+        // nella stessa posizione a schermo della cima della torre: un click
+        // li' ha SEMPRE riportato {12,4}, con o senza quest'area propria.
+        // L'area di hit della torre resta comunque corretta da avere (rende
+        // la torre cliccabile come se stessa, non solo tramite il pavimento
+        // sotto), ed e' quella che Task 12's Proof 4 usa per dimostrare che
+        // `iso.pick()` percorre per intero il ciclo delle quote — non che
+        // il click altrimenti non troverebbe nulla. `place()` proietta il
+        // centro dello sprite esattamente su `project(gx,gy,elevation)`
+        // (origine 0.5,0.5 di default), quindi il diamante di default —
+        // stesso punto, stessa dimensione della proiezione — cade esattamente
+        // dove `pick()` risolve a quella quota, non dove serve indovinare.
         const tower = this.add.isoSprite(TOWER_CELL.gx, TOWER_CELL.gy, 'tower')
             .setCell(TOWER_CELL.gx, TOWER_CELL.gy, TOWER_CELL.elevation, this.iso.bands.prop);
         this.iso.makeDiamondHitArea(tower);

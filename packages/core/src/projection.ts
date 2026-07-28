@@ -6,12 +6,24 @@ import type { Point, ProjectionSpec, ProjectionOptions } from './types';
  *
  * CONVENTION, single and non-negotiable: `project` returns the CENTER of the
  * cell's top face. That is the choice that makes the rounding exact instead
- * of approximate — the set of points with round(gx)=0 and round(gy)=0 is the
- * unit square centered on the origin, which the matrix maps EXACTLY onto the
- * cell's diamond. This is precisely where Phaser contradicts itself:
- * IsometricTileToWorldXY returns the bounding-box corner while
- * IsometricWorldToTileXY assumes the diamond's vertex, so the round-trip
- * comes out shifted by half a cell.
+ * of approximate — the grid-space unit square `[gx-0.5,gx+0.5]×[gy-0.5,gy+0.5]`
+ * centered on the origin is what the matrix maps EXACTLY onto the cell's
+ * diamond, corner-for-corner and edge-for-edge. This is precisely where
+ * Phaser contradicts itself: IsometricTileToWorldXY returns the bounding-box
+ * corner while IsometricWorldToTileXY assumes the diamond's vertex, so the
+ * round-trip comes out shifted by half a cell.
+ *
+ * That square-to-diamond mapping is an exact fact about the matrix, but it is
+ * silent on which cell owns a point exactly ON a shared boundary — "round
+ * gx and round gy, on both axes, the ordinary way" is NOT the rule that
+ * recovers the diamond's actual owner there. `pick()` (`picking.ts`) rounds
+ * `gx` up on an exact `.5` but `gy` DOWN on an exact `.5` — asymmetric on
+ * purpose, to match `Phaser.Geom.Polygon.Contains`'s half-open pnpoly rule,
+ * the rule `makeDiamondHitArea`'s hit areas are actually built on. Getting
+ * this wrong is not cosmetic: it was a real, ~0.79%-of-pixels defect (Task
+ * 12), caught only by comparing `pick()` against a genuine click in a
+ * browser — the geometric fact above says nothing about tie-breaking. See
+ * `picking.ts`'s JSDoc for the full derivation and its own stated limits.
  */
 export interface Projection {
     readonly a: number;
