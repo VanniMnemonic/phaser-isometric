@@ -2789,7 +2789,7 @@ Run: `npx vitest run` → **172** test. `pnpm typecheck` → 0.
 git commit -m "Piano 2 Task 8: pick() e cull() sulla scena"
 ```
 
-**Definition of Done:** 8 test nuovi, totale **180**; le tre mutazioni provate; `cull()` non
+**Definition of Done:** 9 test nuovi, totale **181**; le tre mutazioni provate; `cull()` non
 legge mai `worldView`.
 
 ---
@@ -2879,7 +2879,7 @@ Run: `npx vitest run` → **179** test.
 git commit -m "Piano 2 Task 9: snapshot(), piano e serializzabile"
 ```
 
-**Definition of Done:** 7 test nuovi, totale **187**; il round-trip JSON passa; `snapshot()`
+**Definition of Done:** 7 test nuovi, totale **188**; il round-trip JSON passa; `snapshot()`
 non lancia in nessuno stato, nemmeno dopo `destroy()`.
 
 ---
@@ -3248,8 +3248,8 @@ soddisfa strutturalmente. `DiamondTarget` (Task 7) nomina i sei membri che
 `applyDiamondHitArea` usa. `HeightSource` viene dal core e non è ridefinito. `elevation`,
 non `z`, in tutti i task dal 5 in poi.
 
-**Conteggio dei test**, cumulativo: 105 → 120 → 126 → 137 → 148 → 160 → 172 → 180 → 187 →
-188. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
+**Conteggio dei test**, cumulativo: 105 → 120 → 126 → 137 → 148 → 160 → 172 → 181 → 188 →
+189. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
 aggiustare il conteggio: nel Piano 1 un conteggio sbagliato nel piano fu segnalato da un
 implementer che si rifiutò di inventare un test, ed era la risposta giusta.
 
