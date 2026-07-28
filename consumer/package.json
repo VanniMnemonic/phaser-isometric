@@ -1,0 +1,10 @@
+{
+  "name": "consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "phaser": "4.2.1",
+    "phaser-isometric": "workspace:*"
+  }
+}

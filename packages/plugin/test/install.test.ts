@@ -7,17 +7,6 @@ import { IsoConfigError } from '@iso-internal/core';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
-/**
- * `Scene.iso` (and `Scene.sys.iso`) are not part of Phaser's own types —
- * that global augmentation is Task 10's deliverable, not this task's. Until
- * it lands, every direct property access in this file goes through this
- * local, test-only widening instead of inventing that declaration here.
- */
-type SceneWithIso = Phaser.Scene & {
-    iso: IsoPlugin;
-    sys: Phaser.Scenes.Systems & { iso: IsoPlugin };
-};
-
 afterEach(() => {
     destroyGame();
     // Obbligatorio: la PluginCache e' un singleton di modulo che sopravvive a
@@ -30,11 +19,15 @@ describe('dove finisce il plugin', () => {
     it('si monta su sys[mapping] E su scene[mapping]', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
 
-        expect(scene.sys.iso).toBeInstanceOf(IsoPlugin);
+        // `Phaser.Scenes.Systems` does not get the `iso` augmentation — only
+        // `Phaser.Scene` does (see phaser-augment.d.ts) — so this one access
+        // still goes through the same internal-field cast used elsewhere in
+        // this file (e.g. the ISO_PLUGIN_KEY checks below).
+        expect((scene.sys as unknown as Record<string, unknown>).iso).toBeInstanceOf(IsoPlugin);
         expect(scene.iso).toBeInstanceOf(IsoPlugin);
-        expect(scene.iso).toBe(scene.sys.iso);
+        expect(scene.iso).toBe((scene.sys as unknown as Record<string, unknown>).iso);
     });
 
     it('NON si monta sulla key: la key vive solo nella PluginCache', async () => {
@@ -49,7 +42,7 @@ describe('dove finisce il plugin', () => {
     it('riceve il mapping come terzo argomento del costruttore', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
 
         expect(scene.iso.pluginKey).toBe('iso');
     });
@@ -104,7 +97,7 @@ describe('configurazione', () => {
     it('withDefaults consegna un plugin gia configurato', async () => {
         const scene = await bootGame({
             plugins: { scene: [{ key: ISO_PLUGIN_KEY, plugin: IsoPlugin.withDefaults(DIAMOND), mapping: 'iso' }] }
-        }) as SceneWithIso;
+        });
 
         expect(scene.iso.isConfigured).toBe(true);
         expect(scene.iso.projection.project(0, 0)).toEqual({ x: 0, y: 0 });
@@ -114,7 +107,7 @@ describe('configurazione', () => {
     it('configure() dalla create() della Scene fa lo stesso lavoro', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso' })] }
-        }) as SceneWithIso;
+        });
 
         expect(scene.iso.isConfigured).toBe(false);
         expect(scene.iso.configure(DIAMOND)).toBe(scene.iso);
@@ -125,7 +118,7 @@ describe('configurazione', () => {
     it('leggere projection prima di configurare lancia, e il messaggio nomina la correzione', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso' })] }
-        }) as SceneWithIso;
+        });
 
         expect(() => scene.iso.projection).toThrow(IsoUsageError);
         try {
@@ -141,7 +134,7 @@ describe('configurazione', () => {
     it('bands espone le sette bande del core', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
 
         expect(scene.iso.bands.floor).toBe(0);
         expect(scene.iso.bands.overlay).toBe(6);
@@ -152,7 +145,7 @@ describe('configure() e atomica', () => {
     it('un depth non valido lancia e lascia il plugin non configurato', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso' })] }
-        }) as SceneWithIso;
+        });
 
         expect(() => scene.iso.configure(DIAMOND, { depth: { layout: { rowStride: -1 } } }))
             .toThrow(IsoConfigError);
@@ -164,7 +157,7 @@ describe('configure() e atomica', () => {
     it('una riconfigurazione fallita non tocca la coppia proiezione/depth precedente', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
 
         const projectionPrima = scene.iso.projection;
         const depthPrima = scene.iso.depth;

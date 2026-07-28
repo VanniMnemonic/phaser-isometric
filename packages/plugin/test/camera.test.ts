@@ -1,26 +1,18 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
-import { ISO_PLUGIN_KEY, IsoPlugin, isoScenePlugin } from '../src/plugin';
+import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
 import { viewOf } from '../src/camera';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
-/**
- * `Scene.iso` is not part of Phaser's own types — that global augmentation
- * is Task 10's deliverable, not this task's. Until it lands, every direct
- * property access in this file goes through this local, test-only widening
- * instead of inventing that declaration here.
- */
-type SceneWithIso = Phaser.Scene & { iso: IsoPlugin };
-
 afterEach(() => { destroyGame(); forgetScenePlugin(ISO_PLUGIN_KEY); });
 
-function conIso(extra: Record<string, unknown> = {}): Promise<SceneWithIso> {
+function conIso(extra: Record<string, unknown> = {}): Promise<Phaser.Scene> {
     return bootGame({
         plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] },
         ...extra
-    }) as Promise<SceneWithIso>;
+    });
 }
 
 describe('viewOf — pura, nessun Phaser richiesto', () => {

@@ -3,22 +3,13 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createHeightGrid } from '@iso-internal/core';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
 import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
-import type { IsoPlugin } from '../src/plugin';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
-/**
- * `Scene.iso` is not part of Phaser's own types — that global augmentation is
- * Task 10's deliverable, not this task's. Until it lands, every direct
- * property access in this file goes through this local, test-only widening
- * instead of inventing that declaration here.
- */
-type SceneWithIso = Phaser.Scene & { iso: IsoPlugin };
-
 afterEach(() => { destroyGame(); forgetScenePlugin(ISO_PLUGIN_KEY); });
 
-function conIso(): Promise<SceneWithIso> {
-    return bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } }) as Promise<SceneWithIso>;
+function conIso(): Promise<Phaser.Scene> {
+    return bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
 }
 
 describe('pick()', () => {

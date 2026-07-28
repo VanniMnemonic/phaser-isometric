@@ -5,30 +5,16 @@ import { ISO_PLUGIN_KEY, IsoPlugin, isoScenePlugin } from '../src/plugin';
 import type { IsoSnapshot } from '../src/snapshot';
 import { createHeightGrid } from '@iso-internal/core';
 import type { HeightSource } from '@iso-internal/core';
-import type { IsoSprite } from '../src/iso-sprite';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
-/**
- * `Scene.iso` and `scene.add.isoSprite` are not part of Phaser's own types —
- * that global augmentation is Task 10's deliverable, not this task's. Until
- * it lands, every direct property access in this file goes through this
- * local, test-only widening instead of inventing that declaration here.
- */
-type SceneWithIso = Phaser.Scene & {
-    iso: IsoPlugin;
-    add: Phaser.GameObjects.GameObjectFactory & {
-        isoSprite(gx: number, gy: number, texture: string, frame?: string | number): IsoSprite;
-    };
-};
-
 afterEach(() => { destroyGame(); forgetScenePlugin(ISO_PLUGIN_KEY); });
 
-function conIso(extra: Record<string, unknown> = {}): Promise<SceneWithIso> {
+function conIso(extra: Record<string, unknown> = {}): Promise<Phaser.Scene> {
     return bootGame({
         plugins: { scene: [isoScenePlugin({ mapping: 'iso', projection: DIAMOND })] },
         ...extra
-    }) as Promise<SceneWithIso>;
+    });
 }
 
 describe('snapshot() — round-trip JSON', () => {
@@ -60,7 +46,7 @@ describe('snapshot() — plugin non configurato', () => {
     it('configured false, projection/depth null, nessun throw', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ mapping: 'iso' })] }
-        }) as SceneWithIso;
+        });
 
         let snap: IsoSnapshot | undefined;
         expect(() => { snap = scene.iso.snapshot(); }).not.toThrow();

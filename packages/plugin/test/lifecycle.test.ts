@@ -1,17 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
-import { ISO_PLUGIN_KEY, IsoPlugin, isoScenePlugin } from '../src/plugin';
+import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
-
-/**
- * `Scene.iso` (and `Scene.sys.iso`) are not part of Phaser's own types —
- * that global augmentation is Task 10's deliverable, not this task's. Until
- * it lands, every direct property access in this file goes through this
- * local, test-only widening instead of inventing that declaration here.
- */
-type SceneWithIso = Phaser.Scene & { iso: IsoPlugin };
 
 afterEach(() => {
     destroyGame();
@@ -27,7 +19,7 @@ describe('il cablaggio del ciclo di vita', () => {
     it('boot() aggancia DESTROY, che la classe base non aggancia', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
 
         expect(scene.iso.isLive).toBe(true);
         expect(listenerCount(scene, Phaser.Scenes.Events.DESTROY)).toBeGreaterThan(0);
@@ -36,7 +28,7 @@ describe('il cablaggio del ciclo di vita', () => {
     it('destroy() viene eseguito quando la Scene muore', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
         const plugin = scene.iso;
 
         scene.sys.events.emit(Phaser.Scenes.Events.DESTROY, scene.sys);
@@ -66,7 +58,7 @@ describe('il cablaggio del ciclo di vita', () => {
     it('dopo destroy() il plugin non trattiene piu la Scene', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
         const plugin = scene.iso;
 
         scene.sys.events.emit(Phaser.Scenes.Events.DESTROY, scene.sys);
@@ -79,7 +71,7 @@ describe('il cablaggio del ciclo di vita', () => {
     it('destroy() e idempotente: chiamarlo due volte non lancia ne ripete lo spegnimento', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
         const plugin = scene.iso;
         const shutdownSpy = vi.spyOn(plugin, 'shutdown');
 
@@ -98,7 +90,7 @@ describe('il cablaggio del ciclo di vita', () => {
     it('la configurazione sopravvive a uno shutdown, che non e una distruzione', async () => {
         const scene = await bootGame({
             plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] }
-        }) as SceneWithIso;
+        });
 
         scene.sys.events.emit(Phaser.Scenes.Events.SHUTDOWN, scene.sys);
 

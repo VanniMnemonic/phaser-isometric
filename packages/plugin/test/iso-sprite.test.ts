@@ -6,23 +6,10 @@ import { IsoSprite } from '../src/iso-sprite';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
 
-/**
- * `Scene.iso` and `scene.add.isoSprite` are not part of Phaser's own types —
- * that global augmentation is Task 10's deliverable, not this task's. Until
- * it lands, every direct property access in this file goes through this
- * local, test-only widening instead of inventing that declaration here.
- */
-type SceneWithIso = Phaser.Scene & {
-    iso: import('../src/plugin').IsoPlugin;
-    add: Phaser.GameObjects.GameObjectFactory & {
-        isoSprite(gx: number, gy: number, texture: string, frame?: string | number): IsoSprite;
-    };
-};
-
 afterEach(() => { destroyGame(); forgetScenePlugin(ISO_PLUGIN_KEY); });
 
-function conIso() {
-    return bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } }) as Promise<SceneWithIso>;
+function conIso(): Promise<Phaser.Scene> {
+    return bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
 }
 
 describe('la factory', () => {
