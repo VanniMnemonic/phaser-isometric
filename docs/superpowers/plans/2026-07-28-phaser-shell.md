@@ -1219,7 +1219,7 @@ Run: `npx vitest run packages/plugin/test/lifecycle.test.ts`
 Expected: PASS, 6 test.
 
 Run: `npx vitest run`
-Expected: PASS, **123** test.
+Expected: PASS, **126** test.
 
 Run: `pnpm typecheck`
 Expected: exit 0.
