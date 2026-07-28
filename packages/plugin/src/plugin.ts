@@ -13,6 +13,8 @@ import type {
 import { IsoUsageError } from './errors';
 import { registerIsoSprite } from './iso-sprite';
 import { viewOf } from './camera';
+import { applyDiamondHitArea } from './hit-area';
+import type { DiamondHitAreaOptions, DiamondTarget } from './hit-area';
 
 /**
  * Guards a numeric input to `follow()`. `projectInto` validates nothing (by
@@ -342,6 +344,22 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         camera.setBounds(b.x, b.y, b.width, b.height);
 
         return this;
+    }
+
+    /**
+     * Gives a Game Object a diamond hit area matching one cell. Defaults to the
+     * projection's own tile size.
+     */
+    makeDiamondHitArea<T extends DiamondTarget>(target: T, opts: DiamondHitAreaOptions = {}): T {
+        const p = this.projection;
+        // Dal preset diamond: a = tw/2 e d = th/2, quindi il tile si ricava
+        // dalla matrice senza doverlo tenere in un secondo posto che puo'
+        // disallinearsi.
+        return applyDiamondHitArea(
+            target,
+            opts.tileWidth ?? p.a * 2,
+            opts.tileHeight ?? p.d * 2
+        );
     }
 
     /** Ricalcola il proxy dal bersaglio corrente. No-op se nessuno e' inseguito. */

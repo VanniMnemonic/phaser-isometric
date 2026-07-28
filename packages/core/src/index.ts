@@ -24,6 +24,9 @@ export type { PickOptions } from './picking';
 export { cullBounds } from './culling';
 export type { CullPadding } from './culling';
 
+export { diamondPoints } from './hit-area';
+export type { DiamondPointsOptions } from './hit-area';
+
 export { worldBounds, contentBounds } from './bounds';
 
 export { IsoConfigError } from './errors';

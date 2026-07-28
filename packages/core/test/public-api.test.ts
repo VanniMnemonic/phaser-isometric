@@ -10,6 +10,7 @@ const SUPERFICIE_ATTESA = [
     'createHeightGrid',
     'createProjection',
     'cullBounds',
+    'diamondPoints',
     'pick',
     'worldBounds'
 ].sort();
