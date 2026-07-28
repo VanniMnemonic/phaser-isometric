@@ -16,10 +16,12 @@ import type {
     Rect
 } from '@iso-internal/core';
 import { IsoUsageError } from './errors';
-import { registerIsoSprite } from './iso-sprite';
+import { IsoSprite, registerIsoSprite } from './iso-sprite';
 import { viewOf } from './camera';
 import { applyDiamondHitArea } from './hit-area';
 import type { DiamondHitAreaOptions, DiamondTarget } from './hit-area';
+import { snapshotOf } from './snapshot';
+import type { IsoSnapshot } from './snapshot';
 
 /**
  * Guards a numeric input to `follow()`. `projectInto` validates nothing (by
@@ -107,6 +109,12 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     private proiezione: Projection | null = null;
     private assegnatore: DepthAssigner | null = null;
     private vivo = false;
+
+    // Il mapping validato in boot(): resta null sia prima del boot sia nel
+    // caso scene["null"] (nessun `mapping` fornito all'installazione). E'
+    // esattamente cio' che snapshot() deve riportare, senza dover ripetere
+    // la stessa validazione che boot() fa gia' per il proprio warning.
+    private mappingValido: string | null = null;
 
     // Riusato a ogni place(): con centinaia di entita' che si muovono ogni
     // frame, allocare un Point per chiamata darebbe al GC un lavoro che non
@@ -432,6 +440,49 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         );
     }
 
+    /**
+     * A flat, serialisable, read-only picture of this plugin's state — no
+     * Phaser objects, no functions, no getters that reach back into the
+     * Scene. `JSON.stringify(plugin.snapshot())` always succeeds: this is
+     * what a debug overlay draws, what an integration test asserts on, and
+     * what a bug report can be asked to paste.
+     *
+     * Never throws, in ANY state — including after `destroy()`. It exists to
+     * diagnose a plugin that may already be broken, so requiring the plugin
+     * to be configured, booted, or even live first would make it useless
+     * exactly when it is needed the most.
+     */
+    snapshot(): IsoSnapshot {
+        const camera = this.systems?.cameras?.main ?? null;
+        const displayList = this.systems?.displayList?.list ?? [];
+
+        return snapshotOf({
+            mapping: this.mappingValido,
+            booted: this.vivo,
+            projection: this.proiezione ? {
+                a: this.proiezione.a,
+                b: this.proiezione.b,
+                c: this.proiezione.c,
+                d: this.proiezione.d,
+                det: this.proiezione.det,
+                elevationStep: this.proiezione.elevationStep,
+                origin: { x: this.proiezione.origin.x, y: this.proiezione.origin.y }
+            } : null,
+            depth: this.assegnatore?.layout ?? null,
+            camera: camera ? {
+                scrollX: camera.scrollX,
+                scrollY: camera.scrollY,
+                zoomX: camera.zoomX,
+                zoomY: camera.zoomY,
+                roundPixels: camera.roundPixels,
+                following: this.inseguito !== null,
+                view: viewOf(camera)
+            } : null,
+            heightsSource: this.sorgenteQuote,
+            isoSpriteCount: displayList.filter(o => o instanceof IsoSprite).length
+        });
+    }
+
     /** Ricalcola il proxy dal bersaglio corrente. No-op se nessuno e' inseguito. */
     private aggiornaProxy(): void {
         if (!this.inseguito) return;
@@ -455,6 +506,11 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
                 'Note that `systemKey` and `sceneKey`, which appear in Phaser\'s own documented ' +
                 'example, are read only by the Loader and are ignored here.'
             );
+        } else {
+            // Valido SOLO in questo ramo: e' l'unico in cui sappiamo che e'
+            // una stringa non vuota. Altrimenti `mappingValido` resta null,
+            // il valore che snapshot() deve riportare per il caso scene["null"].
+            this.mappingValido = mapping;
         }
 
         this.vivo = true;
