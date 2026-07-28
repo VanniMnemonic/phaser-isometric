@@ -1,9 +1,9 @@
 import { requireFinite, requirePositive } from './errors';
 
 export interface DiamondPointsOptions {
-    /** The texture frame's width, in pixels. */
+    /** The texture frame's width, in pixels. Must be positive. */
     frameWidth: number;
-    /** The texture frame's height, in pixels. */
+    /** The texture frame's height, in pixels. Must be positive. */
     frameHeight: number;
     /** The diamond's full width — the cell's tile width. */
     tileWidth: number;
@@ -29,8 +29,8 @@ export interface DiamondPointsOptions {
  * that is correct, and a hit area is not required to stay inside its texture.
  */
 export function diamondPoints(opts: DiamondPointsOptions): number[] {
-    requireFinite(opts.frameWidth, 'frameWidth');
-    requireFinite(opts.frameHeight, 'frameHeight');
+    requirePositive(opts.frameWidth, 'frameWidth');
+    requirePositive(opts.frameHeight, 'frameHeight');
     requirePositive(opts.tileWidth, 'tileWidth');
     requirePositive(opts.tileHeight, 'tileHeight');
     requireFinite(opts.originX, 'originX');

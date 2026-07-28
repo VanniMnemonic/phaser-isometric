@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { diamondPoints } from '../src/hit-area';
+import { IsoConfigError } from '../src/errors';
 
 describe('diamondPoints', () => {
     it('produce quattro vertici in ordine orario dall alto', () => {
@@ -43,5 +44,30 @@ describe('diamondPoints', () => {
             frameWidth: 96, frameHeight: 96,
             tileWidth: 0, tileHeight: 48, originX: 0.5, originY: 0.5
         })).toThrow();
+    });
+
+    it('rifiuta una dimensione del frame non positiva', () => {
+        // Un frame a zero o negativo non e' un caso legittimo (un target senza
+        // texture ancora assegnata): accettarlo produrrebbe in silenzio un
+        // rombo mal centrato invece di segnalare il problema.
+        expect(() => diamondPoints({
+            frameWidth: 0, frameHeight: 96,
+            tileWidth: 96, tileHeight: 48, originX: 0.5, originY: 0.5
+        })).toThrow(IsoConfigError);
+        expect(() => diamondPoints({
+            frameWidth: 96, frameHeight: -10,
+            tileWidth: 96, tileHeight: 48, originX: 0.5, originY: 0.5
+        })).toThrow(IsoConfigError);
+    });
+
+    it('rifiuta un origine non finita', () => {
+        expect(() => diamondPoints({
+            frameWidth: 96, frameHeight: 96,
+            tileWidth: 96, tileHeight: 48, originX: NaN, originY: 0.5
+        })).toThrow(IsoConfigError);
+        expect(() => diamondPoints({
+            frameWidth: 96, frameHeight: 96,
+            tileWidth: 96, tileHeight: 48, originX: 0.5, originY: Number.POSITIVE_INFINITY
+        })).toThrow(IsoConfigError);
     });
 });
