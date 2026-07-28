@@ -20,3 +20,10 @@ coverage/
 # e restano tracciati.
 examples/e2e/playwright-report/
 examples/e2e/test-results/
+
+# Task 13, fix round 1: bench-results.json viene riscritto a ogni `pnpm e2e`,
+# quindi sporcherebbe l'albero di lavoro a ogni run — a differenza degli
+# screenshot sopra, che sono un'istantanea deliberata scattata una volta.
+# bench-baseline.json resta tracciato: e' la baseline CURATA, committata a
+# mano, contro cui bench.spec.ts confronta ogni run (vedi il commento lì).
+examples/e2e/artifacts/bench-results.json
