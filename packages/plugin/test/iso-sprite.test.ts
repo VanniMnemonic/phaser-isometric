@@ -74,6 +74,19 @@ describe('la factory', () => {
         const scene = await conIso();
         expect(typeof scene.add.isoSprite).toBe('function');
     });
+
+    it('un add.isoSprite che fallisce non lascia nulla nel display list', async () => {
+        const scene = await conIso();
+        const lunghezzaPrima = scene.sys.displayList.list.length;
+
+        // gx frazionario: solo keyFor() lo rifiuta dentro setCell(), projectInto
+        // no. Se la factory chiamasse displayList.add() PRIMA di setCell(), uno
+        // sprite mezzo inizializzato resterebbe orfano nella lista anche se la
+        // chiamata a scene.add.isoSprite(...) lancia e non restituisce nulla.
+        expect(() => scene.add.isoSprite(1.5, 0, '__DEFAULT')).toThrow();
+
+        expect(scene.sys.displayList.list).toHaveLength(lunghezzaPrima);
+    });
 });
 
 describe('IsoSprite', () => {
@@ -130,5 +143,34 @@ describe('IsoSprite', () => {
         const scene = await conIso();
         const s = scene.add.isoSprite(0, 0, '__DEFAULT');
         expect(s.setCell(1, 1)).toBe(s);
+    });
+});
+
+describe('setCell() e atomico: valida prima di mutare', () => {
+    it('un setCell che fallisce non lascia alcuno stato a meta', async () => {
+        const scene = await conIso();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+        // Cella e posizione di partenza distinguibili (non zero, non default),
+        // cosi' "intatto" qui sotto e' un confronto vero contro un valore
+        // scelto apposta, non contro cio' che capiterebbe di default.
+        s.setCell(2, 3, 5, scene.iso.bands.hero, 7);
+
+        const gx = s.gx, gy = s.gy, elevation = s.elevation, band = s.band, sub = s.sub;
+        const x = s.x, y = s.y, depth = s.depth;
+
+        // band = 99 e' fuori da maxBands (16 di default): solo keyFor() dentro
+        // place() lo scopre, projectInto no. Se setCell() scrivesse i campi
+        // della cella PRIMA di chiamare place(), qui sotto gx/gy/band/sub
+        // risulterebbero gia' corrotti nonostante il throw.
+        expect(() => s.setCell(9, 9, 0, 99)).toThrow();
+
+        expect(s.gx).toBe(gx);
+        expect(s.gy).toBe(gy);
+        expect(s.elevation).toBe(elevation);
+        expect(s.band).toBe(band);
+        expect(s.sub).toBe(sub);
+        expect(s.x).toBe(x);
+        expect(s.y).toBe(y);
+        expect(s.depth).toBe(depth);
     });
 });

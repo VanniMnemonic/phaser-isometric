@@ -66,13 +66,21 @@ export class IsoSprite extends Phaser.GameObjects.Sprite {
         band: Band = this.band,
         sub: number = this.sub
     ): this {
+        // Validate BEFORE mutating: `place()` computes the depth key first and
+        // throws on an invalid `gx`/`gy`/`band`/`sub` before writing anything to
+        // `this`. Calling it before touching the cell fields means a rejected
+        // `setCell()` leaves gx/gy/elevation/band/sub — and x/y/depth, via
+        // `place()`'s own atomicity — exactly as they were. Writing the cell
+        // fields first would corrupt them on a throw, and a later
+        // `setCell(gx, gy)` with omitted band/sub would then default to that
+        // corrupted value and throw again for a reason the caller never gave.
+        isoOf(this.scene).place(this, gx, gy, elevation, band, sub);
+
         this.gx = gx;
         this.gy = gy;
         this.elevation = elevation;
         this.band = band;
         this.sub = sub;
-
-        isoOf(this.scene).place(this, gx, gy, elevation, band, sub);
 
         return this;
     }
@@ -100,13 +108,20 @@ export function registerIsoSprite(pluginManager: Phaser.Plugins.PluginManager): 
         ): IsoSprite {
             const sprite = new IsoSprite(this.scene, 0, 0, texture, frame);
 
+            // Validate BEFORE mutating: `setCell` can throw on an invalid
+            // gx/gy. Doing it before `displayList.add()` means a rejected call
+            // leaves NOTHING behind in the Scene — no half-initialised sprite
+            // orphaned in the display list that the caller never got a
+            // reference to.
+            sprite.setCell(gx, gy);
+
             // ONLY the display list, exactly like the built-in Sprite factory.
             // `Sprite.addedToScene()` subscribes itself to the update list, and
             // `displayList.add` is what triggers it: doing it here too would
             // enroll it twice, and animations would advance at double speed.
             this.displayList.add(sprite);
 
-            return sprite.setCell(gx, gy);
+            return sprite;
         }
     );
 }
