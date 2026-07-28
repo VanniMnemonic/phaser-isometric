@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createDepthAssigner, createProjection, DEFAULT_BANDS } from '@iso-internal/core';
+import { createDepthAssigner, createProjection, DEFAULT_BANDS, worldBounds } from '@iso-internal/core';
 import type {
     Band,
     DepthAssigner,
@@ -7,10 +7,12 @@ import type {
     Point,
     Projection,
     ProjectionOptions,
-    ProjectionSpec
+    ProjectionSpec,
+    Rect
 } from '@iso-internal/core';
 import { IsoUsageError } from './errors';
 import { registerIsoSprite } from './iso-sprite';
+import { viewOf } from './camera';
 
 /**
  * The key this plugin occupies in Phaser's PluginCache.
@@ -83,6 +85,17 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     // frame, allocare un Point per chiamata darebbe al GC un lavoro che non
     // deve fare. `projectInto` esiste nel core esattamente per questo.
     private readonly appoggio: Point = { x: 0, y: 0 };
+
+    // Il bersaglio che la camera insegue, in coordinate di GRIGLIA. `null`
+    // quando nessuno e' inseguito: e' anche la guardia che ferma
+    // `aggiornaProxy` senza bisogno di staccare/riattaccare il listener a ogni
+    // follow()/stopFollow().
+    private inseguito: { gx: number; gy: number; z?: number } | null = null;
+
+    // Mutato SUL POSTO a ogni PRE_UPDATE: e' l'oggetto che `Camera.startFollow`
+    // trattiene come `_follow`. Riassegnarlo (invece di scrivere .x/.y) romperebbe
+    // quel riferimento e la camera resterebbe ferma per sempre, senza errori.
+    private readonly proxy: Point = { x: 0, y: 0 };
 
     constructor(
         scene: Phaser.Scene,
@@ -211,6 +224,109 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         return target;
     }
 
+    /**
+     * Follows a target given in GRID coordinates.
+     *
+     * The camera is handed a private screen-space point that this plugin keeps
+     * up to date, because `startFollow` reads nothing but `.x` and `.y` from its
+     * target. All of Phaser's smoothing — lerp, deadzone, bounds clamping —
+     * then works unmodified, in screen space, which is the space the player
+     * actually sees.
+     *
+     * `roundPixels` is read before the call and passed back in. Phaser's
+     * `startFollow(target)` sets it to `false` unconditionally and `stopFollow`
+     * never restores it, which silently disables pixel rounding for a pixel-art
+     * game the first time it follows anything.
+     */
+    follow(
+        target: { gx: number; gy: number; z?: number },
+        opts: { lerp?: number; offsetX?: number; offsetY?: number } = {}
+    ): this {
+        const camera = this.systems?.cameras?.main;
+        if (!camera) {
+            throw new IsoUsageError(
+                'there is no main camera to follow with',
+                'call follow() from your Scene\'s create(), not from its constructor'
+            );
+        }
+
+        // Leggere la proiezione (lancia se non configurato) e roundPixels PRIMA
+        // di mutare qualunque stato: una follow() rifiutata non deve lasciare
+        // `inseguito` assegnato ne' il proxy proiettato a meta'.
+        const proiezione = this.projection;
+        const roundPixels = camera.roundPixels;
+
+        this.inseguito = target;
+        proiezione.projectInto(this.proxy, target.gx, target.gy, target.z ?? 0);
+
+        // Leggi PRIMA, passa DOPO: e' l'unico modo di non perdere la scelta
+        // dell'utente. Nota che lerp e offset sono specchiati sui due assi da
+        // Phaser stesso (lerpY = lerpX): e' una semantica che ereditiamo.
+        camera.startFollow(
+            this.proxy,
+            roundPixels,
+            opts.lerp ?? 1,
+            opts.lerp ?? 1,
+            opts.offsetX ?? 0,
+            opts.offsetY ?? 0
+        );
+
+        return this;
+    }
+
+    /** Stops following. Leaves `roundPixels` exactly as it is. */
+    stopFollow(): this {
+        this.inseguito = null;
+        this.systems?.cameras?.main?.stopFollow();
+        return this;
+    }
+
+    /** The main camera's visible rectangle in world space, computed now. */
+    view(): Rect {
+        const camera = this.systems?.cameras?.main;
+        if (!camera) {
+            throw new IsoUsageError(
+                'there is no main camera, so the view cannot be computed',
+                'call this from create() or later, once the Scene has booted'
+            );
+        }
+        return viewOf(camera);
+    }
+
+    /**
+     * Sets the camera bounds to the screen-space extent of a grid.
+     *
+     * Uses the isometric formula — (W+H)·tw/2 wide, with x starting NEGATIVE
+     * because cell (0, H-1) is the leftmost vertex. Phaser's own
+     * `map.widthInPixels` is orthogonal, which is why
+     * `camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels)` is wrong
+     * on an isometric map.
+     */
+    cameraBounds(gridWidth: number, gridHeight: number, opts: { maxElevation?: number } = {}): this {
+        const camera = this.systems?.cameras?.main;
+        if (!camera) {
+            throw new IsoUsageError(
+                'there is no main camera to set bounds on',
+                'call cameraBounds() from your Scene\'s create()'
+            );
+        }
+
+        // worldBounds valida (finitezza di gridWidth/gridHeight/maxElevation) e
+        // calcola in un locale prima che camera.setBounds scriva alcunche'.
+        const b = worldBounds(this.projection, gridWidth, gridHeight, opts);
+        camera.setBounds(b.x, b.y, b.width, b.height);
+
+        return this;
+    }
+
+    /** Ricalcola il proxy dal bersaglio corrente. No-op se nessuno e' inseguito. */
+    private aggiornaProxy(): void {
+        if (!this.inseguito) return;
+        const t = this.inseguito;
+        // SUL POSTO. La camera trattiene il riferimento a questo oggetto.
+        this.projection.projectInto(this.proxy, t.gx, t.gy, t.z ?? 0);
+    }
+
     override boot(): void {
         // `pluginKey` is the MAPPING, not the key (measured on 4.2.1). Phaser's
         // .d.ts declares it `string`, but with `mapping` omitted it is `null` at
@@ -260,6 +376,11 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // test o un plugin di terze parti puo' fare — `once` impedisce comunque
         // che il conteggio cresca.
         events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+
+        // PRE_UPDATE, perche' gira PRIMA di CameraManager.update (che sta su
+        // UPDATE) e prima dell'update() della Scene: una sola scrittura, una
+        // sola lettura, nessun ritardo di un frame.
+        events.on(Phaser.Scenes.Events.PRE_UPDATE, this.aggiornaProxy, this);
     }
 
     /**
@@ -272,6 +393,8 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         if (!events) return;
 
         events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+        events.off(Phaser.Scenes.Events.PRE_UPDATE, this.aggiornaProxy, this);
+        this.inseguito = null;
     }
 
     /**
