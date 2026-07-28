@@ -1,4 +1,6 @@
-/** A point in screen coordinates (pixels). */
+/** A 2D point. Screen coordinates (pixels) everywhere except the result of
+ *  `unproject`/`unprojectInto`, which is grid coordinates despite sharing
+ *  this shape. */
 export interface Point { x: number; y: number }
 
 /** A cell of the isometric grid, with its elevation. */

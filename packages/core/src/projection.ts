@@ -24,7 +24,11 @@ export interface Projection {
 
     project(gx: number, gy: number, z?: number): Point;
     projectInto(out: Point, gx: number, gy: number, z?: number): Point;
+    /** Inverts the projection: returns GRID coordinates (fractional), not
+     *  screen pixels, despite sharing the `Point` shape. Round to reach a cell. */
     unproject(sx: number, sy: number, z?: number): Point;
+    /** As {@link unproject}, writing into `out`. `out` is filled with GRID
+     *  coordinates. */
     unprojectInto(out: Point, sx: number, sy: number, z?: number): Point;
     cornersOf(gx: number, gy: number, z?: number): [Point, Point, Point, Point];
 }

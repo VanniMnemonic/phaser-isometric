@@ -55,7 +55,16 @@ export function pick(
     // sempre) invece che restituire un mancato pescaggio. La guardia e' O(1) e
     // fallisce restituendo `null`, non lanciando — coerente con la disciplina
     // "la configurazione valida e lancia, il percorso caldo non lancia mai".
-    if (!Number.isFinite(maxElevation) || !Number.isFinite(minElevation)) return null;
+    //
+    // Non basta `Number.isFinite`: oltre Number.MAX_SAFE_INTEGER il passo -1 si
+    // perde per arrotondamento in virgola mobile (es. 1e300 - 1 === 1e300), quindi
+    // il loop non termina comunque pur restando "finito". Raggiungibile dalla sola
+    // API del pacchetto: `createHeightGrid(4,4,0).setHeight(0,0,1e300)` porta
+    // `maxElevation` a 1e300 e appende `pick` allo stesso modo di Infinity.
+    if (
+        !Number.isFinite(maxElevation) || !Number.isFinite(minElevation) ||
+        Math.abs(maxElevation) > Number.MAX_SAFE_INTEGER || Math.abs(minElevation) > Number.MAX_SAFE_INTEGER
+    ) return null;
 
     const scratch: Point = { x: 0, y: 0 };
 
@@ -69,7 +78,10 @@ export function pick(
         const gx = Math.round(scratch.x) + 0;
         const gy = Math.round(scratch.y) + 0;
         if (heights.heightAt(gx, gy) === z) {
-            return { gx, gy, z };
+            // Stessa normalizzazione di gx/gy: se opts.maxElevation e' -0, z parte
+            // da -0 e resta tale finche' non viene restituito (===-0 confonde -0 e
+            // 0, quindi il confronto sopra non lo avrebbe gia' filtrato).
+            return { gx, gy, z: z + 0 };
         }
     }
 

@@ -151,6 +151,40 @@ describe('pick con limiti non finiti (Finding 1)', () => {
     });
 });
 
+describe('pick con limiti oltre Number.MAX_SAFE_INTEGER (hardening)', () => {
+    // Simmetrico a "Finding 1" sopra ma per una causa diversa: qui il limite E'
+    // finito secondo Number.isFinite, quindi la vecchia guardia lo lasciava
+    // passare. Oltre Number.MAX_SAFE_INTEGER il passo -1 del loop si perde per
+    // arrotondamento (1e300 - 1 === 1e300 in virgola mobile), quindi il loop
+    // non termina comunque. Stessa disciplina di sopra: si asserisce SOLO il
+    // valore di ritorno della guardia, MAI il loop non protetto — un test che
+    // appende non finisce mai sarebbe peggio di nessun test.
+    it('un maxElevation raggiunto tramite HeightGrid.setHeight oltre MAX_SAFE_INTEGER restituisce null', () => {
+        // Lo scenario esatto del finding: nessun opts.maxElevation esplicito,
+        // quindi pick legge heights.maxElevation, che setHeight puo' portare a
+        // un valore enorme con una singola scrittura.
+        const g = createHeightGrid(4, 4, 0);
+        g.setHeight(0, 0, 1e300);
+        expect(g.maxElevation).toBe(1e300);
+        expect(pick(proj, 0, 0, g)).toBeNull();
+    });
+
+    it('un opts.maxElevation oltre MAX_SAFE_INTEGER restituisce null', () => {
+        const flat = createHeightGrid(4, 4, 0);
+        const s = proj.project(1, 1, 0);
+        expect(pick(proj, s.x, s.y, flat, { maxElevation: 1e300 })).toBeNull();
+        expect(pick(proj, s.x, s.y, flat, { maxElevation: -1e300 })).toBeNull();
+    });
+
+    it('un opts.minElevation oltre -MAX_SAFE_INTEGER restituisce null', () => {
+        // Simmetrico: con minElevation = -1e300 il passo -1 si perde alla stessa
+        // maniera, quindi il decremento non raggiunge mai il limite.
+        const flat = createHeightGrid(4, 4, 0);
+        const s = proj.project(1, 1, 0);
+        expect(pick(proj, s.x, s.y, flat, { minElevation: -1e300 })).toBeNull();
+    });
+});
+
 describe('pick con minElevation (Finding 2)', () => {
     it('senza minElevation, una griglia riempita sotto zero resta impescabile ovunque', () => {
         // createHeightGrid(w, h, -1) porta maxElevation a -1: il loop
@@ -193,5 +227,20 @@ describe('pick non restituisce -0 (Finding 7)', () => {
         expect(result).toEqual({ gx: 0, gy: 0, z: 0 });
         expect(Object.is(result?.gx, -0)).toBe(false);
         expect(Object.is(result?.gx, 0)).toBe(true);
+    });
+
+    it('un maxElevation di -0 non produce una z di -0 nella cella restituita', () => {
+        // Stessa causa di gx/gy sopra ma sulla quota: -0 e' un ingresso legittimo
+        // per opts.maxElevation (passa indenne attraverso `??`, che controlla solo
+        // null/undefined), e sopravvive come `z` di partenza nel loop perche'
+        // `-0 >= 0` e' vero. `heights.heightAt(...) === z` non lo filtra, perche'
+        // `0 === -0` e' vero: la cella viene trovata, ma senza normalizzazione la
+        // z restituita sarebbe -0.
+        const g = createHeightGrid(2, 2, 0);
+        const s = proj.project(0, 0, 0);
+        const result = pick(proj, s.x, s.y, g, { maxElevation: -0 });
+        expect(result).toEqual({ gx: 0, gy: 0, z: 0 });
+        expect(Object.is(result?.z, -0)).toBe(false);
+        expect(Object.is(result?.z, 0)).toBe(true);
     });
 });
