@@ -31,3 +31,10 @@ examples/e2e/artifacts/bench-results.json
 # packages/plugin/{README.md,LICENSE,llms.txt} sono GENERATI da scripts/build-docs.mjs
 # ma restano tracciati: pnpm pack li legge dal disco. `pnpm docs:check` impedisce
 # che divergano dalle loro sorgenti nella root.
+
+# Task 12 fix round 1: il tarball prodotto da `pnpm pack` in
+# scripts/verify-tarball.mjs (o da un'ispezione a mano). Il gate lo rimuove
+# da solo in un `finally` che copre l'intera pipeline, ma questa e' difesa in
+# profondita': niente `git add -A` in questo repo, ma il file non deve poter
+# finire in un commit nemmeno per errore umano.
+*.tgz
