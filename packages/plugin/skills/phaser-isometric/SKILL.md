@@ -7,7 +7,7 @@ description: "Use this skill when building an isometric or 2.5D diamond-grid gam
 
 > `phaser-isometric` is a Scene plugin for Phaser 4 that turns grid coordinates into screen coordinates and back. It owns four things Phaser 4 does not do correctly on an isometric map: a projection whose round trip is exact, a depth key that can never tie, elevation-aware picking that agrees with a real click to the pixel, and view culling (Phaser 4 performs none of its own). Everything numeric lives in a Phaser-free core; the plugin is the shell that wires it to a Scene.
 
-**Key source paths:** `packages/core/src/projection.ts`, `packages/core/src/depth.ts`, `packages/core/src/picking.ts`, `packages/core/src/culling.ts`, `packages/core/src/bounds.ts`, `packages/plugin/src/plugin.ts`, `packages/plugin/src/iso-sprite.ts`, `packages/plugin/src/debug.ts`
+**Key source paths:** in the repository, not in the installed package — the published tarball ships only `dist`, `skills` and `llms.txt`, none of it under `src/`. On GitHub, under `https://github.com/VanniMnemonic/phaser-isometric/blob/main/`: `packages/core/src/projection.ts`, `packages/core/src/depth.ts`, `packages/core/src/picking.ts`, `packages/core/src/culling.ts`, `packages/core/src/bounds.ts`, `packages/plugin/src/plugin.ts`, `packages/plugin/src/iso-sprite.ts`, `packages/plugin/src/debug.ts`.
 **Related skills:** ../../../phaser/skills/tilemaps/SKILL.md, ../../../phaser/skills/game-object-components/SKILL.md, ../../../phaser/skills/scenes/SKILL.md
 
 ## Install
@@ -455,6 +455,7 @@ Flat and read-only: `mapping`, `booted`, `configured`, `projection`, `depth` lay
 | `makeDiamondHitArea` | `(target, { tileWidth?, tileHeight? }?) => target` | Defaults to the projection's tile size |
 | `snapshot` | `() => IsoSnapshot` | Serialisable; never throws |
 | `isLive` | `boolean` | True between `boot()` and `destroy()` |
+| `graphicsScene` | `Phaser.Scene` | The Scene this plugin is attached to; throws `IsoUsageError` once the Scene is gone (e.g. after shutdown). For the debug overlay and similar tooling that needs the Scene itself, not just `this.iso` |
 
 `IsoPlugin.withDefaults(spec, opts?)` bakes a projection into a subclass; `isoScenePlugin()` calls it for you.
 

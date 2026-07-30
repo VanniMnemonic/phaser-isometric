@@ -11,7 +11,8 @@
   "homepage": "https://github.com/VanniMnemonic/phaser-isometric#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/VanniMnemonic/phaser-isometric.git"
+    "url": "git+https://github.com/VanniMnemonic/phaser-isometric.git",
+    "directory": "packages/plugin"
   },
   "bugs": {
     "url": "https://github.com/VanniMnemonic/phaser-isometric/issues"

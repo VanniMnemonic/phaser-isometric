@@ -48,7 +48,19 @@ function inject(text, where) {
  * word outside a fence.
  */
 function llmsTxt(skill) {
-    const senzaFrontmatter = skill.replace(/^---\n[\s\S]*?\n---\n/, '');
+    // Task F2: `**Related skills:**` in SKILL.md is written relative to
+    // SKILL.md's OWN shipped location, skills/phaser-isometric/SKILL.md -
+    // two directories below the package root, so `../../../` reaches
+    // node_modules/phaser/skills/... from there. llms.txt ships two levels
+    // shallower, AT the package root itself: the same three `../../../`
+    // segments from there land one level above the consumer's whole
+    // project, not at a sibling package. Rewrite just that line's paths for
+    // the depth llms.txt actually ships at, before anything else runs.
+    const conRelatedSkillsCorrette = skill.replace(
+        /^(\*\*Related skills:\*\* ).+$/m,
+        (riga) => riga.replace(/\.\.\/\.\.\/\.\.\//g, '../')
+    );
+    const senzaFrontmatter = conRelatedSkillsCorrette.replace(/^---\n[\s\S]*?\n---\n/, '');
     const righe = senzaFrontmatter.split('\n');
 
     const FENCE_MAX = 12;
@@ -78,7 +90,10 @@ function llmsTxt(skill) {
         out.push(riga);
     }
 
-    return `# phaser-isometric\n${out.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
+    // Task F8: no leading `# phaser-isometric` here — the source already
+    // opens with its own H1 (`# Phaser Isometric`), and prepending a second
+    // one produced two H1s in a row at the top of the shipped file.
+    return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
 }
 
 const targets = [];

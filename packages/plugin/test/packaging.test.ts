@@ -1,12 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = JSON.parse(
     readFileSync(resolve(PKG_DIR, 'package.json'), 'utf8')
 ) as Record<string, any>;
+
+/** Every file under `dir`, recursively, as paths relative to `dir` itself. */
+function elencoRicorsivo(dir: string): string[] {
+    const risultato: string[] = [];
+    for (const voce of readdirSync(dir)) {
+        const percorsoAssoluto = join(dir, voce);
+        if (statSync(percorsoAssoluto).isDirectory()) {
+            for (const figlio of elencoRicorsivo(percorsoAssoluto)) risultato.push(join(voce, figlio));
+        } else {
+            risultato.push(voce);
+        }
+    }
+    return risultato;
+}
 
 describe('manifest di pubblicazione', () => {
     it('e pubblicabile', () => {
@@ -64,8 +78,35 @@ describe('manifest di pubblicazione', () => {
         }
     });
 
-    it('non spedisce sorgenti', () => {
+    it('il campo files espone solo dist, skills e llms.txt', () => {
         expect(new Set(PKG.files)).toEqual(new Set(['dist', 'skills', 'llms.txt']));
+    });
+
+    it('non spedisce file .ts, ma i sourcemap si\' - per scelta, non per svista', () => {
+        // Task F6: questo test si chiamava "non spedisce sorgenti" ma
+        // asseriva solo sul campo `files` sopra, mai sul contenuto reale di
+        // `dist/`. Misurato: dist/*.js.map pesa 121.743 byte (42% del
+        // tarball scompattato) e OGNI mappa porta il sorgente TypeScript
+        // completo, verbatim, in `sourcesContent`. Spedire sourcemap per una
+        // libreria e' una scelta legittima che questo repo mantiene di
+        // proposito - uno stack trace dentro il gioco di qualcun altro vale
+        // piu' dei byte che costa - ma deve essere una decisione registrata,
+        // non un effetto collaterale, e il test non puo' affermare il
+        // contrario di cio' che il tarball contiene davvero.
+        const fileDist = elencoRicorsivo(resolve(PKG_DIR, 'dist'));
+
+        const sorgentiTs = fileDist.filter(f => f.endsWith('.ts') && !f.endsWith('.d.ts'));
+        expect(sorgentiTs).toEqual([]);
+
+        const sourcemap = fileDist.filter(f => f.endsWith('.js.map'));
+        expect(sourcemap.length).toBeGreaterThan(0);
+        for (const mappa of sourcemap) {
+            const contenuto = JSON.parse(readFileSync(resolve(PKG_DIR, 'dist', mappa), 'utf8'));
+            if (contenuto.sources.length > 0) {
+                expect(Array.isArray(contenuto.sourcesContent), mappa).toBe(true);
+                expect(contenuto.sourcesContent.length, mappa).toBe(contenuto.sources.length);
+            }
+        }
     });
 
     it('non lascia main o types come seconda via di risoluzione', () => {
@@ -100,6 +141,11 @@ describe('manifest di pubblicazione', () => {
 
     it('porta i campi che npm mostra su un pacchetto open source', () => {
         expect(PKG.repository.url).toContain('github.com/VanniMnemonic/phaser-isometric');
+        // Task F7: il pacchetto vive in packages/plugin dentro il repo, non
+        // alla radice. Senza `directory`, il link "Repository" che npm mostra
+        // sulla pagina del pacchetto punta alla radice del monorepo invece
+        // che alla sottocartella reale.
+        expect(PKG.repository.directory).toBe('packages/plugin');
         expect(PKG.bugs.url).toContain('/issues');
         expect(PKG.homepage).toContain('github.com');
         expect(PKG.description.length).toBeGreaterThan(40);

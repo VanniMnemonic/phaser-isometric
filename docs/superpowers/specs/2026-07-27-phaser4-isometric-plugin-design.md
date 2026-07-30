@@ -226,6 +226,16 @@ plugins: {
 a diventare sia la proprietà sulla Scene sia il terzo argomento `pluginKey` del costruttore.
 Il JSDoc di `installScenePlugin` afferma il contrario (`sys[key]`).
 
+> Corretto il 2026-07-30, in sede di revisione finale prima della pubblicazione. Il paragrafo
+> qui sopra dice `sys['undefined']` e `scene['undefined']`. È sbagliato: la misura, confermata
+> due volte contro il sorgente di Phaser 4.2.1 e da una prova empirica registrata in
+> `docs/recon/scene-plugin-lifecycle.md`, è `sys["null"]` e `scene["null"]` —
+> `PluginManager` legge `GetFastValue(entry, 'mapping', null)`, e quel `null`, non
+> `undefined`, diventa la chiave di proprietà usata. La documentazione già spedita
+> (`SKILL.md`, trappola 3) riporta già `"null"` correttamente; era questa spec a non essere
+> stata allineata. Lasciato visibile invece di riscritto silenziosamente: un piano che nasconde
+> i propri errori vale meno di uno che li mostra.
+
 `withDefaults()` esiste perché a uno ScenePlugin **`init(data)` non viene mai chiamato**:
 restituisce una sottoclasse con la proiezione già incorporata, senza toccare internals. Chi
 vuole una proiezione per scena chiama `this.iso.configure(...)`. Chiamare qualunque metodo

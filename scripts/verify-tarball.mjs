@@ -109,7 +109,7 @@ try {
     // anche quando il pacchetto disegna correttamente — un falso negativo
     // del gate stesso, non del pacchetto installato. Questa parte e' la
     // correzione gia' rivista e confermata: non toccarla.
-    const { fuoriModa, totale, dominante } = await page.evaluate(() => new Promise(resolve => {
+    const { fuoriSfondo, totale } = await page.evaluate(() => new Promise(resolve => {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 const canvas = document.querySelector('canvas');
@@ -120,72 +120,58 @@ try {
                 const { width, height } = copia;
                 const data = ctx.getImageData(0, 0, width, height).data;
 
-                // Fix round 1 — Finding 2, seconda stesura. La prima stesura
-                // stabiliva lo sfondo dai quattro angoli del canvas; misurato
-                // a mano sul Quick Start reale, e' falso per questa stessa
-                // scena: la telecamera inquadra il pavimento isometrico fin
-                // dentro due dei quattro angoli (angoli in alto rgb(17,20,26)
-                // = sfondo, angoli in basso rgb(61,90,128) = tile), quindi la
-                // media dei quattro angoli produce un grigio-blu (39,55,77)
-                // che non e' il colore di nessun pixel reale, e ogni pixel
-                // vero (sfondo o tile) se ne discosta: il conteggio saliva al
-                // 100% per il motivo sbagliato. Il colore DOMINANTE per
-                // superficie occupata regge qualunque inquadratura, non solo
-                // questa: e' quello che davvero rappresenta "non e' successo
-                // niente qui" quando il canvas e' per lo piu' uniforme.
-                const conteggi = new Map();
+                // Revisione finale — Finding F1. La stesura precedente
+                // contava i pixel che si scostano dal colore DOMINANTE per
+                // superficie occupata. Misurato sul Quick Start reale, quel
+                // dominante e' rgb(61,90,128) = il colore del TILE, che
+                // copre l'85% del canvas — non lo sfondo. L'asserzione
+                // leggeva quindi "almeno l'1% del canvas non e' tile-
+                // colored", ed e' rovesciata: una scena che disegnasse PIU'
+                // pavimento farebbe scendere la frazione di sfondo residuo,
+                // e un pacchetto sano sopra il 99% di copertura diventerebbe
+                // rosso. Lo strumento corretto e' quello gia' in uso su
+                // questa stessa identica scena in
+                // examples/e2e/from-docs.spec.ts: uno sfondo LETTERALE, non
+                // inferito dal canvas. Il game config del Quick Start
+                // (copiato pari pari da examples/quickstart/src/main.ts,
+                // riga 60) fissa backgroundColor: '#11141a' = rgb(17,20,26);
+                // il margine sotto assorbe compressione e antialiasing,
+                // stessa scatola RGB del test Playwright gemello.
+                const SFONDO = { rMax: 40, gMax: 45, bMax: 55 };
+                let fuoriSfondo = 0;
                 for (let i = 0; i < data.length; i += 4) {
-                    const chiave = `${data[i]},${data[i + 1]},${data[i + 2]}`;
-                    conteggi.set(chiave, (conteggi.get(chiave) ?? 0) + 1);
+                    const dentroSfondo =
+                        data[i] <= SFONDO.rMax &&
+                        data[i + 1] <= SFONDO.gMax &&
+                        data[i + 2] <= SFONDO.bMax;
+                    if (!dentroSfondo) fuoriSfondo += 1;
                 }
-                let dominante = null;
-                let dominanteConteggio = -1;
-                for (const [chiave, n] of conteggi) {
-                    if (n > dominanteConteggio) {
-                        dominante = chiave.split(',').map(Number);
-                        dominanteConteggio = n;
-                    }
-                }
-
-                // Non "esiste un secondo valore RGB" — un solo pixel
-                // antialiasato basterebbe a produrne uno e farebbe passare
-                // il gate anche su un pacchetto rotto. Si conta quanti pixel
-                // si scostano davvero dal colore dominante, su almeno un
-                // canale, oltre una soglia che una sfumatura di compressione
-                // o antialiasing non supera.
-                const DELTA = 20;
-                let fuoriModa = 0;
-                for (let i = 0; i < data.length; i += 4) {
-                    const dr = Math.abs(data[i] - dominante[0]);
-                    const dg = Math.abs(data[i + 1] - dominante[1]);
-                    const db = Math.abs(data[i + 2] - dominante[2]);
-                    if (dr > DELTA || dg > DELTA || db > DELTA) fuoriModa += 1;
-                }
-                resolve({ fuoriModa, totale: width * height, dominante });
+                resolve({ fuoriSfondo, totale: width * height });
             });
         });
     }));
 
     await browser.close();
 
-    // La soglia e' una FRAZIONE dell'area disegnata, non l'esistenza di un
-    // secondo valore RGB qualsiasi: un bordo antialiasato futuro resta ben
-    // sotto l'uno per cento del canvas, mentre un pacchetto che disegna
-    // davvero il Quick Start lo supera con ampio margine (numero misurato
-    // in task-12-report.md).
-    const SOGLIA_FRAZIONE = 0.01;
-    const frazione = fuoriModa / totale;
+    // La soglia e' una FRAZIONE dell'area disegnata SOPRA lo sfondo noto,
+    // non lo scostamento da un colore inferito dal canvas stesso: misurato
+    // sul Quick Start reale, il pavimento e gli sprite coprono circa l'85%
+    // del canvas (vedi task-13-report.md), ben al di sopra della soglia
+    // scelta qui sotto; un pacchetto che non disegna nulla lascia il canvas
+    // interamente dentro la scatola di sfondo, 0% fuori.
+    const SOGLIA_FRAZIONE = 0.10;
+    const frazione = fuoriSfondo / totale;
     console.log(
-        `\n${fuoriModa}/${totale} pixel fuori dal colore dominante (${(frazione * 100).toFixed(3)}%), ` +
-        `dominante rilevato rgb(${dominante.join(',')}), soglia ${(SOGLIA_FRAZIONE * 100)}%`
+        `\n${fuoriSfondo}/${totale} pixel fuori dallo sfondo #11141a (${(frazione * 100).toFixed(3)}%), ` +
+        `soglia ${(SOGLIA_FRAZIONE * 100)}%`
     );
     if (frazione < SOGLIA_FRAZIONE) {
         throw new Error(
-            `solo ${(frazione * 100).toFixed(3)}% di pixel fuori dal colore dominante ` +
+            `solo ${(frazione * 100).toFixed(3)}% di pixel fuori dallo sfondo ` +
             `(soglia ${(SOGLIA_FRAZIONE * 100)}%): non ha disegnato`
         );
     }
-    console.log(`\nGATE PASSATO — ${fuoriModa}/${totale} pixel fuori dal colore dominante (${(frazione * 100).toFixed(2)}%), progetto in ${dir}`);
+    console.log(`\nGATE PASSATO — ${fuoriSfondo}/${totale} pixel fuori dallo sfondo (${(frazione * 100).toFixed(2)}%), progetto in ${dir}`);
 } finally {
     if (preview) preview.kill('SIGTERM');
     if (tarball) rmSync(join(PLUGIN, tarball), { force: true });
