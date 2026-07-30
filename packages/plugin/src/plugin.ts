@@ -290,6 +290,24 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         return this.assegnatore;
     }
 
+    /**
+     * The Scene this plugin belongs to.
+     *
+     * `ScenePlugin.scene` is `protected` and nullable, so anything outside the
+     * class — the debug overlay, a host game's own tooling — cannot reach it
+     * without a cast. Exposing it once, guarded, beats a cast at every call
+     * site, each of which would be a place to get the null check wrong.
+     */
+    get graphicsScene(): Phaser.Scene {
+        if (!this.scene) {
+            throw new IsoUsageError(
+                'this plugin is not attached to a Scene',
+                'use the plugin from inside a Scene that is running, not after its shutdown'
+            );
+        }
+        return this.scene;
+    }
+
     /** The seven default depth bands: floor, decal, prop, item, actor, hero, overlay. */
     get bands(): typeof DEFAULT_BANDS {
         return DEFAULT_BANDS;
