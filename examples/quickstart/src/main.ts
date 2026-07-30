@@ -60,7 +60,7 @@ new Phaser.Game({
     backgroundColor: '#11141a',
     // `isoScenePlugin` fills in the `mapping` for you, and `mapping` is
     // MANDATORY: without it Phaser silently mounts the plugin on
-    // `scene["undefined"]` and every call above is a TypeError.
+    // `scene["null"]` and every call above is a TypeError.
     plugins: {
         scene: [isoScenePlugin({
             projection: { type: 'diamond', tileWidth: 96, tileHeight: 48 }

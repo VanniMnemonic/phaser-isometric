@@ -13,18 +13,18 @@ description: "Use this skill when building an isometric or 2.5D diamond-grid gam
 ## Install
 
 ```bash
-npm install phaser-isometric
+npm install phaser-isometric phaser
 ```
 
-`phaser` `^4.0.0` is a peer dependency, declared optional so the pure core can be installed without it.
+`phaser` `^4.0.0` is a peer dependency **declared optional**, which is exactly the flag that stops npm 7+ and pnpm from installing it for you — name it explicitly, or the first `import Phaser from 'phaser'` fails to resolve. It is optional because a program that imports only `phaser-isometric/core` needs neither Phaser nor a DOM.
 
 Three entry points, and they are the whole public surface:
 
 | Import | What it is | When |
 |---|---|---|
-| `phaser-isometric` | The plugin: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, plus every core export re-exported | In a Scene |
-| `phaser-isometric/core` | The pure maths. Zero Phaser imports, runs in Node | Level generators, unit tests, a server that validates moves |
-| `phaser-isometric/debug` | `createIsoDebug` — the cell-outline overlay | While developing; it stays out of a production bundle unless imported on purpose |
+| `phaser-isometric` | The plugin — `isoScenePlugin`, `IsoPlugin`, `IsoSprite` — plus the core's projection, depth, height-grid, picking, culling, bounds and hit-area exports re-exported | In a Scene |
+| `phaser-isometric/core` | The pure maths. Zero Phaser imports, runs in Node. Also the only home of `buildDebugModel`, if you want to draw your own debug view | Level generators, unit tests, a server that validates moves |
+| `phaser-isometric/debug` | `createIsoDebug` — the ready-made cell-outline overlay | While developing; it stays out of a production bundle unless imported on purpose |
 
 TypeScript, in your `tsconfig.json`:
 
@@ -164,7 +164,9 @@ interface HeightSource {
 }
 ```
 
-`null` means **abyss**: a cell with no ground, which is a different thing from elevation `0`, valid walkable ground. An `if (!h)` test conflates them, and that is the classic defect of every sparse heightmap. Elevations are integers, by contract: `pick` probes one integer step at a time, so a fractional height is never matched and stays unpickable.
+`null` means **abyss**: a cell with no ground, which is a different thing from elevation `0`, valid walkable ground. An `if (!h)` test conflates them, and that is the classic defect of every sparse heightmap.
+
+Elevations are integers, by contract, and heights that are not all whole steps apart become unreachable: `pick` probes one integer step at a time **downward from `maxElevation`**, so it tests exactly `maxElevation`, `maxElevation - 1`, and so on. In a grid whose ceiling is `2.5`, the cells at `2.5` are found and every cell at an integer height — `0` included — is never probed at all. Keep the whole source on one integer lattice.
 
 `maxElevation` is an optional capability. When a source does not expose it and the caller passes no `opts.maxElevation`, picking defaults to `0` and probes the floor only — everything raised becomes silently unpickable.
 
@@ -197,13 +199,13 @@ const { minX, maxX, minY, maxY } = this.iso.cull(pad);
 
 `iso.view()` computes the camera's world rectangle **now**, and is not `camera.worldView`. That property is written only inside `Camera.preRender`, which runs in the render phase, so every hook a plugin can reach reads the previous frame's value — and `{0,0,0,0}` on the first frame.
 
-### `setRoundPixels(true)` does not survive a fractional zoom
+### `setRoundPixels(true)` does not survive a camera zoom
 
 Measured on Phaser 4.2.1, and worth a paragraph rather than a footnote if the game is pixel art.
 
-Under WebGL, rounding is decided per Game Object by `willRoundVertices(camera, onlyTranslated)`. The default mode, `safeAuto`, returns `onlyTranslated && camera.roundPixels`, and `onlyTranslated` is recomputed per draw as "the composed matrix is a pure translation". A camera zoom puts a scale component into that matrix, so the vertex rounding never runs, no matter how emphatically `setRoundPixels(true)` was called. (Under Canvas the guard is different and no kinder: `renderRoundPixels` additionally requires an integer `zoomX`/`zoomY`.) The same mechanism means a rotated or scaled sprite is never vertex-rounded either.
+Under WebGL, rounding is decided per Game Object by `willRoundVertices(camera, onlyTranslated)`. The default mode, `safeAuto`, returns `onlyTranslated && camera.roundPixels`, and `onlyTranslated` is recomputed per draw as `cmm[0] === 1 && cmm[1] === 0 && cmm[2] === 0 && cmm[3] === 1` — the composed matrix has to be a pure translation. **Any** zoom other than `1` puts a scale component in that matrix, an integer `zoom: 2` included, so the vertex rounding never runs no matter how emphatically `setRoundPixels(true)` was called. The integer-zoom guard people remember lives in `renderRoundPixels`, which only the **Canvas** renderer reads. The same mechanism means a rotated or scaled sprite is never vertex-rounded either.
 
-What that means for your game: keep the main camera at zoom `1` and get the magnification from the Scale Manager or from larger tile art. If a fractional zoom is a requirement, expect sub-pixel seams between diamonds and do not spend the afternoon hunting for the flaw in the tile art — there is none.
+What that means for your game: keep the main camera at zoom `1` — not "an integer zoom", `1` — and get the magnification from the Scale Manager or from larger tile art. If a zoom is a requirement, expect sub-pixel seams between diamonds and do not spend the afternoon hunting for the flaw in the tile art: there is none.
 
 Related, and handled for you: `camera.startFollow(target)` sets `roundPixels = false` unconditionally, and `stopFollow` never restores it. `iso.follow()` reads the current value first and passes it back in, so following does not silently disable pixel rounding. A hand-written `startFollow` is yours to protect.
 
@@ -216,6 +218,7 @@ band 20 is outside the layout (allowed 0..15). Fix: use a valid band, or raise m
 the isometric plugin has no projection yet, so `this.iso.projection` cannot be read. Fix: call
     this.iso.configure(...) from your Scene's create(), or install it already configured with
     isoScenePlugin({ projection: { type: "diamond", tileWidth: 96, tileHeight: 48 } })
+    (equivalent to IsoPlugin.withDefaults(...) under the hood)
 ```
 
 Hot paths never throw on per-frame input: `pick()` and `cull()` do not validate their coordinates or padding each frame. Both still throw when the plugin was never configured — that is a setup error, constant for the life of the Scene, and returning an empty result for it would surface only as "nothing renders".
@@ -246,7 +249,7 @@ new Phaser.Game({
 ### Lay out a floor, from a height grid
 
 ```ts
-import { createHeightGrid } from 'phaser-isometric';   // every core export is re-exported here
+import { createHeightGrid } from 'phaser-isometric';   // re-exported from the core
 
 create(): void {
     const heights = createHeightGrid(64, 64, 0);
@@ -379,7 +382,9 @@ Flat and read-only: `mapping`, `booted`, `configured`, `projection`, `depth` lay
 
 ### Core exports, from either entry point
 
-`createProjection`, `createDepthAssigner`, `createHeightGrid`, `pick`, `cullBounds`, `worldBounds`, `contentBounds`, `diamondPoints`, `tileSizeOf`, `DEFAULT_BANDS`, `DEFAULT_LAYOUT`, `IsoConfigError`. From the plugin entry also: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyDiamondHitArea`, `IsoUsageError`.
+`createProjection`, `createDepthAssigner`, `createHeightGrid`, `pick`, `cullBounds`, `worldBounds`, `contentBounds`, `diamondPoints`, `tileSizeOf`, `DEFAULT_BANDS`, `DEFAULT_LAYOUT`, `IsoConfigError`.
+
+From the plugin entry only: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyDiamondHitArea`, `IsoUsageError`. From `phaser-isometric/core` only: `buildDebugModel`, with its `DebugModel`, `DebugModelOptions` and `DebugLabel` types — the Phaser-free model behind the overlay, for a debug view of your own.
 
 ## Gotchas and Common Mistakes
 

@@ -22,11 +22,14 @@ export interface HeightSource {
     /**
      * The elevation at grid cell (gx, gy), or `null` for the abyss.
      *
-     * CONTRACT relied on by `pick`: elevations are INTEGERS. `pick` probes
-     * one integer step at a time over the range it is given (`minElevation`
-     * to `maxElevation`, both inclusive, default `minElevation` 0). A cell
-     * whose true elevation is fractional, or falls outside the probed range,
-     * is not an error — it is simply never matched, and stays unpickable.
+     * CONTRACT relied on by `pick`: elevations are INTEGERS. `pick` steps
+     * DOWN from `maxElevation` one integer at a time, to `minElevation`
+     * (both inclusive, default `minElevation` 0), so the only heights it
+     * ever tests are the ones congruent to `maxElevation` modulo 1. A cell
+     * off that ladder — a fractional height in an otherwise integer source,
+     * but equally an integer height in a source whose ceiling is fractional
+     * — is not an error: it is simply never probed, and stays unpickable.
+     * The same applies to anything outside the probed range.
      */
     heightAt(gx: number, gy: number): number | null;
 
