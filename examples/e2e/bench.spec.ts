@@ -83,7 +83,7 @@ function logRun(label: string, run: { results: BenchResults; rendererInfo: strin
     console.log(JSON.stringify(run.results, null, 2));
 }
 
-test.describe('Task 13 — the 500-entity benchmark gate', () => {
+test.describe('Task 13 — the 500-entity benchmark gate @bench', () => {
     test.setTimeout(120_000);
 
     test(`measures the four metrics across ${RUNS} runs, plus a ${RUNS}-run null-hypothesis control`, async ({ page }) => {

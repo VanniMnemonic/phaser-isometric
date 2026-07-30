@@ -49,11 +49,10 @@ importers:
   packages/core: {}
 
   packages/plugin:
-    dependencies:
+    devDependencies:
       '@iso-internal/core':
         specifier: workspace:*
         version: link:../core
-    devDependencies:
       phaser:
         specifier: 4.2.1
         version: 4.2.1

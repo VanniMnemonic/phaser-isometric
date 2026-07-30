@@ -1,13 +1,8 @@
 import Phaser from 'phaser';
 import { createHeightGrid, IsoSprite } from 'phaser-isometric';
 import type { IsoPlugin, IsoSnapshot } from 'phaser-isometric';
-// The subpath 'phaser-isometric/debug' does not resolve yet: the plugin's
-// package.json has no `exports` map and no root-level `debug` file, only
-// `src/debug.ts` — confirmed by running `tsc` against the exact specifier
-// before falling back here (TS2307). Task 7 wires the `exports` map; until
-// then this stays a relative import into the package's own source.
-import { createIsoDebug } from '../../packages/plugin/src/debug';
-import type { IsoDebugOverlay } from '../../packages/plugin/src/debug';
+import { createIsoDebug } from 'phaser-isometric/debug';
+import type { IsoDebugOverlay } from 'phaser-isometric/debug';
 
 /**
  * Everything a Playwright test needs to interrogate the running game,

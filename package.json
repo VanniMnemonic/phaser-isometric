@@ -8,9 +8,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p packages/core/tsconfig.test.json && tsc --noEmit -p packages/plugin/tsconfig.test.json && tsc --noEmit -p consumer/tsconfig.json && tsc --noEmit -p examples/tsconfig.json && tsc --noEmit -p examples/e2e/tsconfig.json",
     "build:js": "pnpm --filter phaser-isometric exec vite build",
-    "build": "pnpm build:js && pnpm build:types",
     "build:types": "node scripts/build-types.mjs",
-    "e2e": "playwright test -c examples/e2e/playwright.config.ts"
+    "build": "pnpm build:js && pnpm build:types",
+    "e2e": "playwright test -c examples/e2e/playwright.config.ts",
+    "e2e:ci": "playwright test -c examples/e2e/playwright.config.ts --grep-invert @bench",
+    "check": "pnpm build && pnpm test && pnpm typecheck && pnpm e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
