@@ -9,7 +9,7 @@
     "typecheck": "tsc --noEmit -p packages/core/tsconfig.test.json && tsc --noEmit -p packages/plugin/tsconfig.test.json && tsc --noEmit -p consumer/tsconfig.json && tsc --noEmit -p examples/tsconfig.json && tsc --noEmit -p examples/e2e/tsconfig.json",
     "build:js": "pnpm --filter phaser-isometric exec vite build",
     "build": "pnpm build:js && pnpm build:types",
-    "build:types": "tsc --emitDeclarationOnly -p packages/core/tsconfig.json",
+    "build:types": "node scripts/build-types.mjs",
     "e2e": "playwright test -c examples/e2e/playwright.config.ts"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, beforeAll } from 'vitest';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -98,3 +98,41 @@ describe('output della build', () => {
         expect(dalPlugin.IsoConfigError).toBe(dalCore.IsoConfigError);
     });
 });
+
+describe('tipi pubblicati', () => {
+    const T = join(DIST, 'types');
+
+    it('emette le tre dichiarazioni di entry', () => {
+        expect(existsSync(join(T, 'plugin/index.d.ts'))).toBe(true);
+        expect(existsSync(join(T, 'plugin/debug.d.ts'))).toBe(true);
+        expect(existsSync(join(T, 'core/index.d.ts'))).toBe(true);
+    });
+
+    it('porta con se l augmentation globale, non solo il riferimento', () => {
+        const index = readFileSync(join(T, 'plugin/index.d.ts'), 'utf8');
+        expect(index).toContain('phaser-augment.d.ts');
+        // Il riferimento senza il file e' peggio del file senza il
+        // riferimento: compila, e ogni `this.iso` del consumatore diventa un
+        // TS2339 senza che nulla dica perche'.
+        expect(existsSync(join(T, 'plugin/phaser-augment.d.ts'))).toBe(true);
+        const aug = readFileSync(join(T, 'plugin/phaser-augment.d.ts'), 'utf8');
+        expect(aug).toContain('declare global');
+        expect(aug).not.toContain("declare module 'phaser'");
+    });
+
+    it('non lascia specifier interni nei tipi', () => {
+        for (const f of allDts(T)) {
+            expect(readFileSync(f, 'utf8'), `${f}`).not.toContain('@iso-internal/core');
+        }
+    });
+});
+
+function allDts(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) out.push(...allDts(full));
+        else if (full.endsWith('.d.ts')) out.push(full);
+    }
+    return out;
+}
