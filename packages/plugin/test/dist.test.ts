@@ -14,8 +14,19 @@ const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../dist');
  * effetto collaterale, `import "phaser";`, senza la parola "from". Un regex
  * ancorato a "from" perderebbe silenziosamente questa forma, sia per
  * confermarne la presenza sia per escluderla.
+ *
+ * ANCORATO a inizio riga (`^` con flag `m`): senza questo, la stessa regex
+ * corrisponde anche dentro un commento (`// import "phaser" is external`) o
+ * dentro un letterale di stringa (`'you must import "phaser" yourself'`) — e
+ * la build usa `minify: false` apposta perche' gli stack trace restino
+ * leggibili, quindi i commenti JSDoc sopravvivono per davvero in dist/. Un
+ * refactor che togliesse l'import vero lasciando in giro un commento o un
+ * messaggio con quella sottostringa renderebbe l'asserzione verde su una
+ * build sbagliata. Nell'output ESM non minificato di Rollup un import vero
+ * sta sempre a inizio riga; un commento comincia con `//` o `*`, un
+ * letterale con un apice — l'ancora esclude tutti e tre.
  */
-const EXTERNAL_PHASER_IMPORT = /import\s*(?:[\w*{},\s]*\sfrom\s*)?["']phaser["']/;
+const EXTERNAL_PHASER_IMPORT = /^import\s*(?:[\w*{},\s]*\sfrom\s*)?["']phaser["']/m;
 
 /**
  * Questi test leggono l'output di `pnpm build:js`. Se dist non c'e', devono
