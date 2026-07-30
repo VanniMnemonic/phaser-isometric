@@ -164,8 +164,9 @@ test.describe('Task 13 — the 500-entity benchmark gate @bench', () => {
             // an aspirational target would pressure someone into shrinking the scene, which this
             // task exists to refuse to do). What this gate actually catches, worked out from
             // this benchmark's own numbers (full derivation in bench-baseline.json's `_purpose`
-            // and the report's fix-(a) section): roughly an 8-12x blowup in the
-            // ENTITY-ATTRIBUTABLE portion of frameWorkTime (~0.15-0.20ms today). It is a
+            // and the report's fix-(a) section): roughly an 8-15x blowup in the
+            // ENTITY-ATTRIBUTABLE portion of frameWorkTime (~0.11-0.20ms across the two
+            // measurement campaigns, the second one taken before the 0.1.0 release). It is a
             // catastrophe-catcher, not a fine-grained regression detector — a 10x `place()`
             // slowdown or a broken depthSort coalescing (caught instead by the
             // depthSort===1 assertion above) would NOT trip it at today's numbers.
@@ -262,7 +263,7 @@ test.describe('Task 13 — the 500-entity benchmark gate @bench', () => {
 
             // Fix round 2, Item 2: this was a console.log and nothing else — the "floor can
             // never again be read as a cost" rule shipped as a print statement, so a future
-            // frameWorkTime that flatlined at the control's ~0.06-0.07ms regardless of entity
+            // frameWorkTime that flatlined at the control's ~0.05-0.07ms regardless of entity
             // count would pass this whole suite. Now it can't: the entity-attributable signal
             // must clear the control by a real margin, not just print alongside it.
             expect(
