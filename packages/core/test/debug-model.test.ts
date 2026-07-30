@@ -79,6 +79,94 @@ describe('buildDebugModel', () => {
         expect(testi).toContain(`#${depth.keyFor(2, 2, DEFAULT_BANDS.floor)}`);
     });
 
+    it('posiziona le etichette esattamente al centro proiettato, impilate nell ordine dichiarato', () => {
+        const p = createProjection(DIAMOND);
+        const depth = createDepthAssigner();
+        const heights = createHeightGrid(4, 4, 0);
+        heights.setHeight(2, 2, 3);
+
+        const model = buildDebugModel(p, {
+            area: { minX: 2, maxX: 2, minY: 2, maxY: 2 },
+            heights,
+            depth,
+            band: DEFAULT_BANDS.floor,
+            show: { coords: true, elevation: true, depthKeys: true }
+        });
+
+        // Il centro va chiesto alla proiezione, non ricalcolato qui: e'
+        // esattamente cio' che una mutazione su centre.x/riga romperebbe
+        // senza farsi notare da un confronto solo sui testi.
+        const centro = p.project(2, 2, 3);
+
+        expect(model.labels).toHaveLength(3);
+        const coordsLabel = model.labels[0]!;
+        const elevationLabel = model.labels[1]!;
+        const depthLabel = model.labels[2]!;
+
+        expect(coordsLabel.text).toBe('2,2');
+        expect(elevationLabel.text).toBe('z3');
+        expect(depthLabel.text).toBe(`#${depth.keyFor(2, 2, DEFAULT_BANDS.floor)}`);
+
+        // La prima etichetta sta esattamente sul centro proiettato.
+        expect(coordsLabel.x).toBe(centro.x);
+        expect(coordsLabel.y).toBe(centro.y);
+
+        // Tutte alla stessa x, impilate verso il basso nell'ordine dichiarato:
+        // coords, poi elevation, poi depth key.
+        expect(elevationLabel.x).toBe(centro.x);
+        expect(depthLabel.x).toBe(centro.x);
+        expect(elevationLabel.y).toBeGreaterThan(coordsLabel.y);
+        expect(depthLabel.y).toBeGreaterThan(elevationLabel.y);
+
+        // Lo scarto fra righe consecutive e' costante.
+        const scarto1 = elevationLabel.y - coordsLabel.y;
+        const scarto2 = depthLabel.y - elevationLabel.y;
+        expect(scarto1).toBeGreaterThan(0);
+        expect(scarto1).toBe(scarto2);
+    });
+
+    it('con show.coords da solo emette una sola etichetta, con le coordinate', () => {
+        const p = createProjection(DIAMOND);
+        const heights = createHeightGrid(4, 4, 0);
+        heights.setHeight(2, 2, 3);
+        const model = buildDebugModel(p, {
+            area: { minX: 2, maxX: 2, minY: 2, maxY: 2 },
+            heights,
+            show: { coords: true }
+        });
+        expect(model.labels).toHaveLength(1);
+        expect(model.labels[0]!.text).toBe('2,2');
+    });
+
+    it('con show.elevation da solo emette una sola etichetta, con la quota', () => {
+        const p = createProjection(DIAMOND);
+        const heights = createHeightGrid(4, 4, 0);
+        heights.setHeight(2, 2, 3);
+        const model = buildDebugModel(p, {
+            area: { minX: 2, maxX: 2, minY: 2, maxY: 2 },
+            heights,
+            show: { elevation: true }
+        });
+        expect(model.labels).toHaveLength(1);
+        expect(model.labels[0]!.text).toBe('z3');
+    });
+
+    it('con show.depthKeys da solo emette una sola etichetta, con la chiave di depth', () => {
+        const p = createProjection(DIAMOND);
+        const depth = createDepthAssigner();
+        const heights = createHeightGrid(4, 4, 0);
+        heights.setHeight(2, 2, 3);
+        const model = buildDebugModel(p, {
+            area: { minX: 2, maxX: 2, minY: 2, maxY: 2 },
+            heights,
+            depth,
+            band: DEFAULT_BANDS.floor,
+            show: { depthKeys: true }
+        });
+        expect(model.labels).toHaveLength(1);
+        expect(model.labels[0]!.text).toBe(`#${depth.keyFor(2, 2, DEFAULT_BANDS.floor)}`);
+    });
+
     it('lancia se si chiedono le chiavi di depth senza un DepthAssigner', () => {
         const p = createProjection(DIAMOND);
         expect(() => buildDebugModel(p, {
