@@ -15,11 +15,31 @@ async function scenaConfigurata() {
 }
 
 describe('createIsoDebug', () => {
-    it('lancia se il plugin non e configurato', async () => {
+    it('lancia se il plugin non e configurato, prima di creare qualunque oggetto nella Scene', async () => {
         const scene = await bootGame({ plugins: { scene: [isoScenePlugin()] } });
+        const prima = scene.children.length;
+
         // Non e una svista: senza proiezione non c e nulla da disegnare, e un
         // overlay vuoto e indistinguibile da un overlay rotto.
-        expect(() => createIsoDebug(scene.iso)).toThrow(/configure/);
+        //
+        // La regex punta al testo SPECIFICO della guardia di createIsoDebug
+        // ("nothing to draw a debug overlay for"), non a una sottostringa
+        // generica come "configure": iso.projection, letto piu' sotto dentro
+        // draw(), lancia anch'esso un errore che nomina "configure" (il suo
+        // notConfigured('projection')). Un test che si fermasse a /configure/
+        // non saprebbe distinguere "la mia guardia ha funzionato" da "un
+        // getter a valle ha lanciato per conto suo" — e quindi resterebbe
+        // verde anche se questa guardia venisse cancellata per intero.
+        expect(() => createIsoDebug(scene.iso)).toThrow(/nothing to draw a debug overlay for/);
+
+        // Se la guardia in testa a createIsoDebug sparisse, il throw
+        // arriverebbe comunque — ma piu' tardi, da dentro draw(), quando
+        // iso.projection lancia il SUO errore. A quel punto pero'
+        // scene.add.graphics() e' gia' stato eseguito: un Graphics orfano
+        // resterebbe nella Scene. Questo assert e' cio' che pinna davvero
+        // "valida PRIMA di mutare" — una chiamata rifiutata non deve lasciare
+        // nulla a meta' nella Scene.
+        expect(scene.children.length).toBe(prima);
     });
 
     it('disegna un rombo per cella nell area richiesta', async () => {
