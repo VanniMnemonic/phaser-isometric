@@ -119,8 +119,17 @@ describe('non-divergenza della documentazione', () => {
         // oltre quella soglia lo farebbe sparire dai documenti spediti, e
         // `docs:check` non se ne accorgerebbe: rigenererebbe coerentemente la
         // versione senza comando.
-        expect(LLMS).toContain('npx phaser-isometric diagnose');
-        expect(LLMS).toContain('kind=IsoConfigError');
+        // Una sonda per fence, e ognuna deve essere UNICA del proprio.
+        // La prima stesura asseriva 'npx phaser-isometric diagnose', che
+        // compare in entrambi: il preflight l'ha uccisa gonfiando il primo
+        // fence oltre la soglia e trovando il test ancora verde, perche' la
+        // stringa sopravviveva nel secondo. Un'asserzione soddisfatta da un
+        // pezzo di documento diverso da quello che protegge non protegge
+        // niente.
+        expect(LLMS, 'il fence del comando e sparito da llms.txt')
+            .toContain('npx phaser-isometric diagnose --tile 96x48 --grid 24x24');
+        expect(LLMS, 'il fence della scheda ERROR e sparito da llms.txt')
+            .toContain('kind=IsoConfigError');
     });
 });
 

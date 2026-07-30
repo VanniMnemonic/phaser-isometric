@@ -39,7 +39,7 @@ const EXTERNAL_PHASER_IMPORT = /^import\s*(?:[\w*{},\s]*\sfrom\s*)?["']phaser["'
  * il grosso nei chunk condivisi, quindi una entry piccola non e' una entry
  * economica.
  */
-function grafo(entry: string): string {
+function grafo(entry: string): { testo: string; files: string[] } {
     const visti = new Set<string>();
     const pezzi: string[] = [];
     const cammina = (nome: string): void => {
@@ -52,7 +52,10 @@ function grafo(entry: string): string {
         }
     };
     cammina(entry);
-    return pezzi.join('\n');
+    // `files` non e' diagnostica: e' cio' che rende verificabile che la
+    // camminata sia avvenuta. Senza, un'asserzione negativa sul testo e' vera
+    // anche quando il walker non ha seguito un solo import.
+    return { testo: pezzi.join('\n'), files: [...visti] };
 }
 
 /**
@@ -129,18 +132,30 @@ describe('output della build', () => {
     });
 
     it('il bundle che ogni gioco impacchetta non paga la CLI', () => {
-        // `buildDiagnosis` sta nel core e NON e' ri-esportato da src/index.ts,
-        // esattamente come buildDebugModel. Questa e' la verifica che quella
-        // decisione regge nell'artefatto e non solo nel sorgente: se qualcuno
-        // lo aggiungesse a index.ts, ogni gioco comincerebbe a spedire il
-        // dossier che serve solo alla riga di comando.
-        expect(grafo('index.js')).not.toContain('buildDiagnosis');
+        const daIndex = grafo('index.js');
+        const daCli = grafo('cli.js');
 
-        // Anti-vacuita'. Un walker rotto — regex sbagliata, join sbagliato —
-        // renderebbe l'asserzione qui sopra verde per il motivo sbagliato,
-        // senza aver letto niente. Questa meta' fallisce se il walker non
-        // cammina davvero.
-        expect(grafo('cli.js')).toContain('buildDiagnosis');
+        // ANTI-VACUITA' PRIMA, e non come coda. La prima stesura di questo
+        // test metteva la meta' positiva in fondo e usava `buildDiagnosis`
+        // come sonda: il preflight l'ha uccisa. Rompendo la regex del walker
+        // restavano dodici test verdi, perche' `grafo` legge comunque il file
+        // di partenza e `cli.js` nomina `buildDiagnosis` nella propria riga di
+        // import — la positiva passava senza che si fosse camminato di un
+        // passo, e con lei la negativa qui sotto.
+        expect(daIndex.files.length, 'il walker non ha seguito nessun import da index.js')
+            .toBeGreaterThan(1);
+        expect(daCli.files, 'il walker non ha raggiunto il chunk della diagnosi')
+            .toContain('chunk-diagnosis.js');
+
+        // La sonda vive SOLO dentro chunk-diagnosis.js, quindi trovarla e'
+        // possibile unicamente avendo attraversato il grafo.
+        //
+        // Il fatto verificato: `buildDiagnosis` sta nel core e NON e'
+        // ri-esportato da src/index.ts, come gia' buildDebugModel. Se qualcuno
+        // lo aggiungesse, ogni gioco comincerebbe a spedire nel proprio bundle
+        // un dossier che serve solo alla riga di comando.
+        expect(daIndex.testo).not.toContain('fractional-tile-centres');
+        expect(daCli.testo).toContain('fractional-tile-centres');
     });
 
     it('le entry condividono UNA sola istanza del core', async () => {
