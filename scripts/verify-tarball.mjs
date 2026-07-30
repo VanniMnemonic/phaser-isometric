@@ -8,7 +8,7 @@
  * invisible right up to the first user.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,16 +37,16 @@ let tarball;
 let dir;
 let preview;
 try {
-    console.log('1/6  build');
+    console.log('1/7  build');
     run('pnpm', ['build'], ROOT);
 
-    console.log('2/6  pack');
+    console.log('2/7  pack');
     run('pnpm', ['pack', '--pack-destination', PLUGIN], PLUGIN);
     tarball = readdirSync(PLUGIN).find(f => f.startsWith('phaser-isometric-') && f.endsWith('.tgz'));
     if (!tarball) throw new Error('pnpm pack non ha prodotto alcun tarball');
 
     dir = mkdtempSync(join(tmpdir(), 'phaser-iso-virgin-'));
-    console.log(`3/6  progetto vergine in ${dir}`);
+    console.log(`3/7  progetto vergine in ${dir}`);
 
     writeFileSync(join(dir, 'package.json'), JSON.stringify({
         name: 'virgin', private: true, version: '0.0.0', type: 'module'
@@ -120,15 +120,77 @@ try {
         ''
     ].join('\n'));
 
-    console.log('4/6  install');
+    console.log('4/7  install');
     run('npm', ['install', '--no-audit', '--no-fund', 'phaser@4.2.1', 'vite@^7.3.6', 'typescript@~5.7.2'], dir);
     run('npm', ['install', '--no-audit', '--no-fund', join(PLUGIN, tarball)], dir);
 
-    console.log('5/6  typecheck e build');
+    // Prima del typecheck e molto prima del browser: un bin rotto deve
+    // fallire in due secondi, non dopo un ciclo di build e un Chromium.
+    console.log('5/7  il bin risponde davvero, attraverso lo shim di npm');
+    const BIN = join(dir, 'node_modules/.bin/phaser-isometric');
+
+    // (a) Il campo bin e' sopravvissuto a pack, install e creazione del link.
+    if (!existsSync(BIN)) {
+        throw new Error(
+            'npm non ha creato node_modules/.bin/phaser-isometric: il campo bin ' +
+            'non e\' arrivato nel tarball, oppure punta a un file che non c\'e\''
+        );
+    }
+
+    // (b) Il bit di esecuzione. Non lo mettiamo noi al pack: lo mette npm
+    //     all'install (bin-links/fix-bin.js fa un chmod esplicito). Questo e'
+    //     l'unico punto della pipeline in cui npm ha davvero girato su un
+    //     tarball vero, quindi e' l'unico punto in cui quella frase si puo'
+    //     MISURARE invece che assumere.
+    if (process.platform !== 'win32') {
+        const mode = statSync(BIN).mode;
+        if ((mode & 0o111) === 0) {
+            throw new Error(`il target del bin non e' eseguibile (mode ${mode.toString(8)})`);
+        }
+    }
+
+    // (c) Eseguito ATTRAVERSO lo shim, non con `node`: la suite vitest lancia
+    //     `node dist/cli.js`, che funziona anche senza shebang. Questo e'
+    //     l'unico posto dove la riga `#!` viene davvero usata.
+    const scheda = execFileSync(BIN, ['diagnose', '--tile', '96x48', '--grid', '24x24'],
+        { cwd: dir, encoding: 'utf8' });
+    for (const atteso of [
+        '## PROJECTION', 'det=2304.0000', 'conditioning=1.000000',
+        'boundsXYWH=-1152.0000,-24.0000,2304.0000,1152.0000', 'exact=yes'
+    ]) {
+        if (!scheda.includes(atteso)) {
+            throw new Error(`il dossier del pacchetto installato non contiene "${atteso}":\n${scheda}`);
+        }
+    }
+
+    // (d) La promessa "e' per costruzione la versione che hai installato",
+    //     eseguita invece che scritta — e attraverso `npx`, cioe' la riga
+    //     esatta che la documentazione mette davanti al lettore.
+    const versioneVista = execFileSync('npx', ['phaser-isometric', 'version'],
+        { cwd: dir, encoding: 'utf8' }).trim();
+    const versioneAttesa = JSON.parse(readFileSync(join(PLUGIN, 'package.json'), 'utf8')).version;
+    if (versioneVista !== versioneAttesa) {
+        throw new Error(`npx phaser-isometric version dice ${versioneVista}, il manifest dice ${versioneAttesa}`);
+    }
+
+    // (e) L'exit code arriva davvero al chiamante. Un tile 97x48 ha i centri
+    //     su mezzo pixel: warning, quindi 0 senza --strict e 2 con.
+    let stato = 0;
+    try {
+        execFileSync(BIN, ['diagnose', '--tile', '97x48', '--strict'], { cwd: dir, stdio: 'pipe' });
+    } catch (e) {
+        stato = e.status;
+    }
+    if (stato !== 2) {
+        throw new Error(`una configurazione con warning e --strict ha restituito exit ${stato}, atteso 2`);
+    }
+    console.log(`     bin ok: phaser-isometric@${versioneVista}, dossier reso, exit 2 su --strict`);
+
+    console.log('6/7  typecheck e build');
     run('npx', ['tsc', '--noEmit', '-p', 'tsconfig.json'], dir);
     run('npx', ['vite', 'build'], dir);
 
-    console.log('6/6  disegna davvero?');
+    console.log('7/7  disegna davvero?');
     preview = spawn(
         'npx', ['vite', 'preview', '--port', '4319', '--strictPort'],
         { cwd: dir, stdio: 'ignore', detached: false }

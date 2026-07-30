@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -24,8 +25,21 @@ import { fileURLToPath } from 'node:url';
  */
 const PACKAGE_ROOT = fileURLToPath(new URL('.', import.meta.url));
 
+/**
+ * The version the CLI prints, read from the manifest at build time. Injected
+ * rather than imported so that `dist/cli.js` needs no JSON import at runtime,
+ * and so the printed version cannot drift from the published one: there is
+ * only one place it can come from.
+ */
+const VERSION: string = JSON.parse(
+    readFileSync(new URL('package.json', import.meta.url), 'utf8')
+).version;
+
 export default defineConfig({
     root: PACKAGE_ROOT,
+    define: {
+        __ISO_VERSION__: JSON.stringify(VERSION)
+    },
     build: {
         outDir: 'dist',
         emptyOutDir: true,
@@ -36,12 +50,23 @@ export default defineConfig({
             entry: {
                 index: fileURLToPath(new URL('src/index.ts', import.meta.url)),
                 core: fileURLToPath(new URL('../core/src/index.ts', import.meta.url)),
-                debug: fileURLToPath(new URL('src/debug.ts', import.meta.url))
+                debug: fileURLToPath(new URL('src/debug.ts', import.meta.url)),
+                // The `bin` target. Its shebang lives on line 1 of the source:
+                // Rollup re-emits a module's shebang only when that module is
+                // the chunk's entry facade, which makes leakage into the other
+                // three entries structurally impossible.
+                cli: fileURLToPath(new URL('src/cli.ts', import.meta.url))
             },
             formats: ['es']
         },
         rollupOptions: {
-            external: ['phaser'],
+            // `/^node:/` is defence in depth, not decoration. Vite's client
+            // build resolves a `node:` builtin to an empty browser stub and
+            // succeeds with only a warning, so a future `import ... from
+            // 'node:fs'` in the CLI would compile, bundle, and then find
+            // `undefined` at runtime. External short-circuits that path,
+            // because `external` is consulted before any plugin resolveId.
+            external: ['phaser', /^node:/],
             output: {
                 entryFileNames: '[name].js',
                 chunkFileNames: 'chunk-[name].js'

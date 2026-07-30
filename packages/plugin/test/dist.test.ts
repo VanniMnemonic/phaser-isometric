@@ -33,6 +33,29 @@ const TSC_BIN = join(REPO_ROOT, 'node_modules/.bin/tsc');
 const EXTERNAL_PHASER_IMPORT = /^import\s*(?:[\w*{},\s]*\sfrom\s*)?["']phaser["']/m;
 
 /**
+ * Concatena il sorgente di una entry e di ogni chunk che raggiunge, seguendo
+ * gli import relativi. Serve a chiedere "questa entry PAGA quel codice?", una
+ * domanda che leggere il solo file di entry non puo' rispondere: Rollup mette
+ * il grosso nei chunk condivisi, quindi una entry piccola non e' una entry
+ * economica.
+ */
+function grafo(entry: string): string {
+    const visti = new Set<string>();
+    const pezzi: string[] = [];
+    const cammina = (nome: string): void => {
+        if (visti.has(nome)) return;
+        visti.add(nome);
+        const src = readFileSync(join(DIST, nome), 'utf8');
+        pezzi.push(src);
+        for (const m of src.matchAll(/from\s*"(\.\/[^"]+)"/g)) {
+            cammina((m[1] as string).slice(2));
+        }
+    };
+    cammina(entry);
+    return pezzi.join('\n');
+}
+
+/**
  * Questi test leggono l'output di `pnpm build:js`. Se dist non c'e', devono
  * FALLIRE con un messaggio che lo dice — non essere saltati: un `it.skipIf`
  * qui renderebbe verde una suite che non ha verificato la build.
@@ -45,11 +68,21 @@ describe('output della build', () => {
         ).toBe(true);
     });
 
-    it('emette le tre entry', () => {
+    it('emette le quattro entry', () => {
         const files = readdirSync(DIST);
         expect(files).toContain('index.js');
         expect(files).toContain('core.js');
         expect(files).toContain('debug.js');
+        // cli.js non ha un sottopath in exports: e' il target di `bin`, e il
+        // suo unico modo di esistere per un consumatore e' questo file.
+        expect(files).toContain('cli.js');
+    });
+
+    it('cli.js non tira dentro phaser', () => {
+        // Il peer e' `optional`, quindi "installato senza phaser" e' un caso
+        // normale, non un incidente: una CLI che importasse phaser fallirebbe
+        // proprio li'. E il dossier e' matematica pura, non ne ha bisogno.
+        expect(readFileSync(join(DIST, 'cli.js'), 'utf8')).not.toMatch(EXTERNAL_PHASER_IMPORT);
     });
 
     it('lascia phaser esterno in ogni entry che lo usa', () => {
@@ -68,10 +101,13 @@ describe('output della build', () => {
         // questo problema, e coglie Phaser ovunque finisca — entry o chunk
         // condiviso, come ha dimostrato il preflight di mutazione: senza
         // `external`, Rollup ha spostato i ~5.4 MB di Phaser in un chunk
-        // condiviso e `index.js` da solo e' rimasto piccolo. Il pacchetto
-        // reale oggi pesa poche decine di kB in totale; 300_000 lascia un
-        // ordine di grandezza per crescere e coglie comunque Phaser con un
-        // fattore ~18.
+        // condiviso e `index.js` da solo e' rimasto piccolo.
+        //
+        // MISURATO il 2026-07-31, dieci file: 57.326 byte in totale, di cui
+        // 11.974 la CLI aggiunta in 0.2.0 e 22.398 index.js. Margine 5,2x
+        // contro questo budget, e ~94x sotto i 5,4 MB di Phaser: il numero
+        // resta lo stesso, cambia solo il margine, e va rimisurato invece che
+        // riscritto a parole ogni volta che si aggiunge una entry.
         const totalBytes = readdirSync(DIST)
             .filter(f => f.endsWith('.js'))
             .reduce((sum, f) => sum + readFileSync(join(DIST, f), 'utf8').length, 0);
@@ -90,6 +126,21 @@ describe('output della build', () => {
         // Il core gira in Node: e' l'intera ragione per cui esiste come
         // sottopath, ed e' cio' che l'oracolo MCP del Piano 4 importera'.
         expect(core).not.toMatch(EXTERNAL_PHASER_IMPORT);
+    });
+
+    it('il bundle che ogni gioco impacchetta non paga la CLI', () => {
+        // `buildDiagnosis` sta nel core e NON e' ri-esportato da src/index.ts,
+        // esattamente come buildDebugModel. Questa e' la verifica che quella
+        // decisione regge nell'artefatto e non solo nel sorgente: se qualcuno
+        // lo aggiungesse a index.ts, ogni gioco comincerebbe a spedire il
+        // dossier che serve solo alla riga di comando.
+        expect(grafo('index.js')).not.toContain('buildDiagnosis');
+
+        // Anti-vacuita'. Un walker rotto — regex sbagliata, join sbagliato —
+        // renderebbe l'asserzione qui sopra verde per il motivo sbagliato,
+        // senza aver letto niente. Questa meta' fallisce se il walker non
+        // cammina davvero.
+        expect(grafo('cli.js')).toContain('buildDiagnosis');
     });
 
     it('le entry condividono UNA sola istanza del core', async () => {

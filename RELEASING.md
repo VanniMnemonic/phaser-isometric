@@ -44,6 +44,16 @@ Run it clean before every publish. It cleans up its own tarball and temp
 project on both success and failure — if you see either left on disk, the run
 did not finish, not that it is safe to ignore.
 
+Since `0.2.0` it also runs the installed **`bin`** through
+`node_modules/.bin/phaser-isometric`, which is the only place where three things
+are simultaneously real: the `#!` line in `dist/cli.js` (the vitest suite
+launches the file with `node`, which works without one), the executable bit that
+npm sets at install time rather than we at pack time, and the
+`npx phaser-isometric` promise the documentation puts in front of a reader. It
+also checks that the installed command reports the manifest's version, which is
+what makes "it is by construction the version you installed" an executed fact
+rather than a sentence.
+
 ## 3. Re-run the benchmark on an idle machine before re-quoting any number
 
 The performance numbers currently in `SKILL.md`, `README.md` and `llms.txt`

@@ -30,6 +30,12 @@ export type { DiamondPointsOptions } from './hit-area';
 export { buildDebugModel } from './debug-model';
 export type { DebugModel, DebugModelOptions, DebugLabel } from './debug-model';
 
+export { buildDiagnosis } from './diagnosis';
+export type {
+    Diagnosis, DiagnosisInput, DiagnosisWarning,
+    ProjectionFacts, DepthFacts, GridFacts, RoundTripFacts
+} from './diagnosis';
+
 export { worldBounds, contentBounds } from './bounds';
 
 export { IsoConfigError } from './errors';

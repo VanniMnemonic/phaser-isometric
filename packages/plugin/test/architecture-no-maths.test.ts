@@ -101,4 +101,35 @@ describe('vincolo architetturale: lo shell non fa matematica isometrica', () => 
             ).toEqual([]);
         }
     });
+
+    it('solo cli.ts nomina process: e la sola porta verso il sistema', () => {
+        // La guardia speculare a quella qui sopra. Il vincolo che tiene la CLI
+        // onesta non e' "niente matematica" ma "niente lato": parsing e resa
+        // sono funzioni pure che si testano senza spawnare un processo, e
+        // restano tali solo finche' nessun altro file legge argv o scrive su
+        // uno stream. Se serve un secondo comando, la sua logica va accanto a
+        // cli-args.ts e cli-render.ts, non dentro cli.ts.
+        //
+        // Passa dall'AST, non da un regex sul testo. Una prima stesura usava
+        // /\bprocess\b/ ed e' andata rossa su cli-args.ts, che la parola la
+        // nomina solo dentro i propri commenti — la stessa trappola per cui
+        // ogni altra guardia di questo file parte da `parse`.
+        const nominaProcess = (file: string): boolean => {
+            let trovato = false;
+            const visit = (node: ts.Node): void => {
+                if (ts.isIdentifier(node) && node.text === 'process') {
+                    const p = node.parent;
+                    const eProprieta =
+                        (ts.isPropertyAccessExpression(p) && p.name === node) ||
+                        (ts.isPropertyAssignment(p) && p.name === node);
+                    if (!eProprieta) trovato = true;
+                }
+                ts.forEachChild(node, visit);
+            };
+            visit(parse(file, readFileSync(file, 'utf8')));
+            return trovato;
+        };
+
+        expect(files.filter(nominaProcess).map(f => basename(f))).toEqual(['cli.ts']);
+    });
 });

@@ -6,6 +6,7 @@ const SUPERFICIE_ATTESA = [
     'DEFAULT_LAYOUT',
     'IsoConfigError',
     'buildDebugModel',
+    'buildDiagnosis',
     'contentBounds',
     'createDepthAssigner',
     'createHeightGrid',

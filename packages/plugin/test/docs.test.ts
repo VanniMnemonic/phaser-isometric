@@ -3,6 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildDiagnosis, IsoConfigError } from '@iso-internal/core';
+import { renderError } from '../src/cli-render';
 
 const SKILL = readFileSync(
     resolve(dirname(fileURLToPath(import.meta.url)), '../skills/phaser-isometric/SKILL.md'),
@@ -92,6 +94,33 @@ describe('non-divergenza della documentazione', () => {
         // torna a essere prosa che invecchia.
         expect(SKILL).toContain(sorgente);
         expect(sorgente.length).toBeGreaterThan(400);
+    });
+
+    it('la scheda ERROR documentata e quella che il codice produce davvero', () => {
+        // Stesso accoppiamento del Quick Start, applicato all'output: la
+        // scheda nella SKILL.md non e' prosa scritta a mano, e' cio' che
+        // renderError produce a partire dall'errore che createProjection lancia
+        // davvero. Cambiare il testo di quel `fix` nel core rende rossa la
+        // documentazione finche' non viene aggiornata.
+        let errore: unknown;
+        try {
+            buildDiagnosis({ projection: { type: 'matrix', a: 1, b: 1, c: 1, d: 1 } });
+        } catch (e) {
+            errore = e;
+        }
+        expect(errore).toBeInstanceOf(IsoConfigError);
+        const err = errore as IsoConfigError;
+        expect(SKILL).toContain(renderError('IsoConfigError', err.symptom, err.fix));
+    });
+
+    it('il comando sopravvive dentro llms.txt, non solo dentro SKILL.md', () => {
+        // build-docs.mjs sostituisce con un puntatore ogni fence piu' lungo di
+        // 12 righe fuori dal Quick Start. Far crescere l'esempio della CLI
+        // oltre quella soglia lo farebbe sparire dai documenti spediti, e
+        // `docs:check` non se ne accorgerebbe: rigenererebbe coerentemente la
+        // versione senza comando.
+        expect(LLMS).toContain('npx phaser-isometric diagnose');
+        expect(LLMS).toContain('kind=IsoConfigError');
     });
 });
 
