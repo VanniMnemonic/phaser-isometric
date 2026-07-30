@@ -899,18 +899,37 @@ Chiamare `this.wireDebugToggle();` accanto a `this.wireZoomToggle();`, e aggiung
 `examples/e2e/helpers.ts` sa già campionare **punti** singoli (`samplePixels`), non contarli tutti. Il conteggio va aggiunto lì, con la stessa tecnica — decodificare uno **screenshot PNG** dentro la pagina, **mai** disegnare il canvas WebGL vivo:
 
 ```ts
+/** An inclusive box in RGB space. Every bound is optional; an omitted one
+ *  does not constrain that channel. */
+export interface ColourRange {
+    rMin?: number; rMax?: number;
+    gMin?: number; gMax?: number;
+    bMin?: number; bMax?: number;
+}
+
 /**
- * Counts the pixels of a PNG screenshot that satisfy a colour predicate.
+ * Counts the pixels of a PNG screenshot whose colour falls inside `range`
+ * — or, with `outside` set, the ones that fall outside it.
  *
  * Same technique as {@link samplePixels} and for the same reason: it decodes a
  * static image the compositor already produced, so it needs none of the
  * `preserveDrawingBuffer` workaround that reading the live WebGL canvas would.
- * The predicate is passed as source text because it has to be evaluated in the
- * page, where a closure from this file cannot reach.
+ *
+ * A plain range rather than a predicate function: `page.evaluate` cannot carry
+ * a closure into the page, and the alternative — shipping predicate source
+ * text and rebuilding it with `new Function` — trades a type-checked argument
+ * for a string nobody checks.
  */
-export async function countPixels(page: Page, png: Buffer, predicate: string): Promise<number> {
+export async function countPixels(
+    page: Page,
+    png: Buffer,
+    range: ColourRange,
+    opts: { outside?: boolean } = {}
+): Promise<number> {
     const base64 = png.toString('base64');
-    return page.evaluate(async ({ base64, predicate }) => {
+    const outside = opts.outside ?? false;
+
+    return page.evaluate(async ({ base64, range, outside }) => {
         const img = new Image();
         img.src = `data:image/png;base64,${base64}`;
         await img.decode();
@@ -923,15 +942,19 @@ export async function countPixels(page: Page, png: Buffer, predicate: string): P
         ctx.drawImage(img, 0, 0);
 
         const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-        const test = new Function('r', 'g', 'b', `return (${predicate});`) as
-            (r: number, g: number, b: number) => boolean;
-
         let n = 0;
         for (let i = 0; i < data.length; i += 4) {
-            if (test(data[i] as number, data[i + 1] as number, data[i + 2] as number)) n += 1;
+            const r = data[i] as number;
+            const g = data[i + 1] as number;
+            const b = data[i + 2] as number;
+            const dentro =
+                r >= (range.rMin ?? 0) && r <= (range.rMax ?? 255) &&
+                g >= (range.gMin ?? 0) && g <= (range.gMax ?? 255) &&
+                b >= (range.bMin ?? 0) && b <= (range.bMax ?? 255);
+            if (dentro !== outside) n += 1;
         }
         return n;
-    }, { base64, predicate });
+    }, { base64, range, outside });
 }
 ```
 
@@ -946,7 +969,7 @@ import { readyScene, waitFrames, countPixels } from './helpers';
 /** La firma del colore di default dell'overlay, 0x00ff88: verde dominante,
  *  rosso basso, blu intermedio. Nessuna texture del playground ci ricade —
  *  e' questo che rende il conteggio una prova invece di un rumore. */
-const VERDE_OVERLAY = 'g > 180 && r < 100 && b > 80 && b < 180';
+const VERDE_OVERLAY = { rMax: 99, gMin: 181, bMin: 81, bMax: 179 };
 
 test.describe('overlay di debug', () => {
     test('disegna contorni che a overlay spento non ci sono', async ({ page }) => {
@@ -2283,7 +2306,10 @@ Creare poi `examples/e2e/from-docs.spec.ts`. **Non usare `readyScene`**: quell'h
 import { test, expect } from '@playwright/test';
 import { waitFrames, countPixels } from './helpers';
 
-const SFONDO = '#11141a';
+/** Lo sfondo #11141a e r=17 g=20 b=26, con un margine generoso per la
+ *  compressione e l'antialiasing. Tutto cio' che cade FUORI da questa
+ *  scatola e' qualcosa che la scena ha disegnato sopra. */
+const SFONDO = { rMax: 40, gMax: 45, bMax: 55 };
 
 test.describe('la scena scritta dalla sola SKILL.md', () => {
     test('disegna qualcosa che non e lo sfondo', async ({ page }) => {
@@ -2295,16 +2321,15 @@ test.describe('la scena scritta dalla sola SKILL.md', () => {
         const png = await canvas.screenshot();
         // Non "il canvas esiste" — quello e' vero anche di una pagina che non
         // ha mai disegnato. La domanda e' se sopra lo sfondo c'e' qualcosa.
-        const nonSfondo = await countPixels(page, png, 'r > 30 || g > 40 || b > 50');
+        const nonSfondo = await countPixels(page, png, SFONDO, { outside: true });
         expect(nonSfondo).toBeGreaterThan(10_000);
 
         await canvas.screenshot({ path: 'examples/e2e/artifacts/proof6-from-docs.png' });
-        void SFONDO;
     });
 });
 ```
 
-Il predicato va tarato sul colore di sfondo che la scena usa davvero: `#11141a` è `r=17 g=20 b=26`, quindi le soglie sopra escludono lo sfondo con margine. Se la scena ne usa un altro, **cambiare le soglie, non la scena**.
+`SFONDO` va tarato sul colore che la scena usa davvero. Se la scena ne usa un altro, **cambiare le soglie, non la scena**: il colore di sfondo lo sceglie chi ha scritto la scena leggendo la documentazione, e riscriverlo per far passare il test invaliderebbe il gate.
 
 ```
 pnpm e2e
