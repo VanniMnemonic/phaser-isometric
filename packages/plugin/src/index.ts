@@ -1,6 +1,6 @@
 /// <reference path="./phaser-augment.d.ts" />
 
-export { IsoPlugin, isoScenePlugin, ISO_PLUGIN_KEY, ISO_SYS_KEY } from './plugin';
+export { IsoPlugin, isoScenePlugin, ISO_PLUGIN_KEY } from './plugin';
 export type { IsoConfigureOptions, IsoScenePluginOptions, Placeable } from './plugin';
 
 export { IsoSprite } from './iso-sprite';
@@ -19,7 +19,7 @@ export { IsoUsageError } from './errors';
 // the core exists.
 export {
     createProjection, createDepthAssigner, createHeightGrid,
-    pick, cullBounds, worldBounds, contentBounds, diamondPoints,
+    pick, cullBounds, worldBounds, contentBounds, diamondPoints, tileSizeOf,
     DEFAULT_BANDS, DEFAULT_LAYOUT, IsoConfigError
 } from '@iso-internal/core';
 export type {

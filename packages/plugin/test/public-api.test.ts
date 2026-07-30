@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 import * as api from '../src/index';
 
 const ATTESI = new Set([
-    'IsoPlugin', 'isoScenePlugin', 'ISO_PLUGIN_KEY', 'ISO_SYS_KEY',
+    'IsoPlugin', 'isoScenePlugin', 'ISO_PLUGIN_KEY',
     'IsoSprite', 'viewOf', 'applyDiamondHitArea', 'IsoUsageError',
     'createProjection', 'createDepthAssigner', 'createHeightGrid',
     'pick', 'cullBounds', 'worldBounds', 'contentBounds', 'diamondPoints',
+    'tileSizeOf',
     'DEFAULT_BANDS', 'DEFAULT_LAYOUT', 'IsoConfigError'
 ]);
 
