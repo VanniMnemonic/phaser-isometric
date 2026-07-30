@@ -1,12 +1,32 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { test, expect } from '@playwright/test';
 import { waitFrames, countPixels } from './helpers';
+// `with { type: 'json' }` non e' decorativo: Playwright esegue le spec come
+// ESM vero attraverso Node, e Node RIFIUTA un import JSON senza attributo con
+// `needs an import attribute of "type: json"`. tsc da solo non lo pretende, e
+// senza questa riga il typecheck passa e il gate si spegne al primo import.
+import background from '../scene-background.json' with { type: 'json' };
 
-/** The background is #11141a, i.e. r=17 g=20 b=26, with a generous margin
- *  for compression and antialiasing. Anything that falls OUTSIDE this box
- *  is something the scene drew on top of it. */
-const BACKGROUND = { rMax: 40, gMax: 45, bMax: 55 };
+/** The background box is shared with the tarball gate — see
+ *  examples/scene-background.json for why it is not a literal here.
+ *  Anything falling OUTSIDE this box is something the scene drew on top. */
+const BACKGROUND = background.box;
+
+const SCENE_SOURCE = fileURLToPath(new URL('../from-docs/src/main.ts', import.meta.url));
 
 test.describe('the scene written from SKILL.md alone', () => {
+    test('measures against the background this scene actually declares', () => {
+        // The shared constant is only worth having if it still describes this
+        // scene. Without this check, changing the scene's background colour
+        // would leave the gate below measuring "not #11141a" on a canvas that
+        // no longer contains any #11141a — every pixel outside the box, and a
+        // green that means nothing.
+        const src = readFileSync(SCENE_SOURCE, 'utf8');
+        expect(src, `${SCENE_SOURCE} must declare backgroundColor: '${background.hex}'`)
+            .toContain(`backgroundColor: '${background.hex}'`);
+    });
+
     test('draws something that is not the background', async ({ page }) => {
         await page.goto('http://localhost:4322/');
         const canvas = page.locator('canvas');

@@ -38,3 +38,11 @@ examples/e2e/artifacts/bench-results.json
 # profondita': niente `git add -A` in questo repo, ma il file non deve poter
 # finire in un commit nemmeno per errore umano.
 *.tgz
+
+# La sonda che dist.test.ts compila per provare che la direttiva del reference
+# ha davvero EFFETTO su un consumatore: mkdtempSync la crea dentro
+# packages/plugin/ perche' i tipi vanno risolti per percorso relativo. Il test
+# la rimuove in un `finally`, ma un test interrotto (Ctrl-C, crash del runner)
+# ne lascia una indietro, e senza questa riga finirebbe fra i file non
+# tracciati che `git status` propone di aggiungere.
+packages/plugin/.typecheck-probe-*

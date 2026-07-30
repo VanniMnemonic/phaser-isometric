@@ -494,6 +494,13 @@ Flat and read-only: `mapping`, `booted`, `configured`, `projection`, `depth` lay
 
 From the plugin entry only: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyDiamondHitArea`, `IsoUsageError`. From `phaser-isometric/core` only: `buildDebugModel`, with its `DebugModel`, `DebugModelOptions` and `DebugLabel` types — the Phaser-free model behind the overlay, for a debug view of your own.
 
+The two bounds functions answer different questions, and the list above is the only place they appear:
+
+| Function | Signature | Answers |
+|---|---|---|
+| `worldBounds` | `(projection, gridWidth, gridHeight, { maxElevation? }) => Rect` | The screen rectangle a `gridWidth` x `gridHeight` grid occupies. It is what `iso.cameraBounds()` is built on, and reading it directly is how you size a minimap or a scroll region without a Scene. Four corners are enough: the transform is affine, so every interior cell falls inside their convex hull. |
+| `contentBounds` | `(projection, cells) => Rect \| null` | The screen rectangle of the cells you actually pass — what is **drawn**, not the grid's theoretical extent. Use it to frame a diorama or fit a camera to a sparse island of terrain. Returns `null` for an empty set on purpose: a degenerate rectangle would be indistinguishable from zero-size content. |
+
 ## Gotchas and Common Mistakes
 
 1. **Two `Phaser.Game` instances on one page: the second silently inherits the first one's plugin.** This is a known, declared limitation. `PluginCache` is a module-level singleton; `installScenePlugin` registers only `if (!hasCore(key))`; and Phaser's duplicate warning fires only within a single `PluginManager`, so a second Game never trips it. A second Game asking for a different projection therefore projects **the entire world with the wrong tile size**, with no signal. Ways out: `Phaser.Plugins.PluginCache.remove(ISO_PLUGIN_KEY)`, or `game.destroy(true, true)` — the second argument is the one that empties the cache. This plugin emits a `console.warn` naming both when it detects it. It bites Vite HMR, a game recreated on level change, and two canvases on one page.

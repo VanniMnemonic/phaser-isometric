@@ -5,17 +5,33 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only: this workflow builds and tests, it never writes to the repository,
+# publishes, or comments. The repository default is wider than that.
+permissions:
+  contents: read
+
+# A push that supersedes an in-flight run makes that run's answer irrelevant.
+# `main` is exempt from cancellation so a merged commit always gets a verdict
+# recorded against it.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.17.0
+      # No `version:` input on purpose. The action reads `packageManager` from
+      # package.json when the input is absent, which makes that field the single
+      # source of truth. With BOTH set, the action compares them by STRING
+      # EQUALITY, not by semver range: a `version: 11` against `pnpm@11.17.0`
+      # throws `Multiple versions of pnpm specified` and kills the workflow at
+      # step two. Omitting it removes that failure mode permanently.
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm

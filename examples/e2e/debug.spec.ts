@@ -29,11 +29,20 @@ test.describe('debug overlay', () => {
     test('turning the overlay off restores the canvas to how it was', async ({ page }) => {
         const { canvas } = await readyScene(page);
 
+        // Aspettare lo STATO, non un numero di frame. Il test gemello sopra lo
+        // fa gia'; qui restavano due `waitFrames` nudi, che presumono che tre
+        // frame bastino sempre. Su una macchina carica non bastano, e il modo
+        // in cui fallisce e' il peggiore possibile: la seconda asserzione
+        // ("dopo lo spegnimento il verde e' 0") sarebbe verde perche'
+        // l'overlay non si e' ancora ACCESO, cioe' passerebbe senza aver mai
+        // esercitato destroy(). Un'attesa sullo stato non ha quel modo.
         await page.click('#debug-toggle');
+        await page.waitForFunction(() => window.__iso?.debug() !== null);
         await waitFrames(page, 3);
         expect(await countPixels(page, await canvas.screenshot(), OVERLAY_GREEN)).toBeGreaterThan(500);
 
         await page.click('#debug-toggle');
+        await page.waitForFunction(() => window.__iso?.debug() === null);
         await waitFrames(page, 3);
 
         // Se destroy() lasciasse i Text nella Scene, questo resterebbe > 0.

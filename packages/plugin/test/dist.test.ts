@@ -103,8 +103,24 @@ describe('output della build', () => {
     });
 });
 
+/**
+ * Stessa ragione del `beforeAll` di "output della build", per l'altra meta'
+ * dell'artefatto: senza dist/types questi test fallirebbero comunque, ma con
+ * un ENOENT da readFileSync che nomina un percorso temporaneo invece del
+ * comando da eseguire. Un rosso che non dice cosa fare costa lo stesso tempo
+ * di un rosso silenzioso.
+ */
+function esigiTipiEmessi(T: string): void {
+    expect(
+        existsSync(T),
+        `${T} non esiste: esegui \`pnpm build:types\` (o \`pnpm build\`) prima della suite`
+    ).toBe(true);
+}
+
 describe('tipi pubblicati', () => {
     const T = join(DIST, 'types');
+
+    beforeAll(() => esigiTipiEmessi(T));
 
     it('emette le tre dichiarazioni di entry', () => {
         expect(existsSync(join(T, 'plugin/index.d.ts'))).toBe(true);
@@ -145,6 +161,8 @@ describe('tipi pubblicati', () => {
  */
 describe('la direttiva del reference funziona, non solo compare', () => {
     const T = join(DIST, 'types');
+
+    beforeAll(() => esigiTipiEmessi(T));
 
     it('la riga di reference e la prima riga esatta di index.d.ts', () => {
         const index = readFileSync(join(T, 'plugin/index.d.ts'), 'utf8');

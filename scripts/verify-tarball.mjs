@@ -8,7 +8,7 @@
  * invisible right up to the first user.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,11 @@ import { chromium } from '@playwright/test';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PLUGIN = join(ROOT, 'packages/plugin');
+
+// Condiviso con examples/e2e/from-docs.spec.ts: due gate che chiedono "ha
+// disegnato qualcosa?" devono chiederlo nelle stesse unita'. Vedi il campo
+// _purpose del file per il perche'.
+const SFONDO_SCENA = JSON.parse(readFileSync(join(ROOT, 'examples/scene-background.json'), 'utf8'));
 
 function run(cmd, args, cwd) {
     console.log(`\n$ ${cmd} ${args.join(' ')}   (${cwd})`);
@@ -67,13 +72,53 @@ try {
 
     writeFileSync(join(dir, 'index.html'),
         '<!doctype html><html><body style="margin:0"><div id="game"></div>' +
-        '<script type="module" src="/src/main.ts"></script></body></html>');
+        '<script type="module" src="/src/entry.ts"></script></body></html>');
 
     // La scena e' il Quick Start della documentazione, alla lettera: se il Quick
     // Start non compila o non disegna, questo gate diventa rosso. E' l'unico modo
     // per cui un esempio nella documentazione non puo' invecchiare in silenzio.
     mkdirSync(join(dir, 'src'));
+    const quickstart = readFileSync(join(ROOT, 'examples/quickstart/src/main.ts'), 'utf8');
     cpSync(join(ROOT, 'examples/quickstart/src/main.ts'), join(dir, 'src/main.ts'));
+
+    // La scatola condivisa e' utile solo finche' descrive DAVVERO questa scena.
+    // Senza questo controllo, cambiare il colore di sfondo del Quick Start
+    // lascerebbe il gate del passo 6 a misurare "non #11141a" su un canvas che
+    // di #11141a non ha piu' un pixel: 100% fuori sfondo, verde che non
+    // significa niente.
+    if (!quickstart.includes(`backgroundColor: '${SFONDO_SCENA.hex}'`)) {
+        throw new Error(
+            `examples/quickstart/src/main.ts non dichiara piu' backgroundColor: '${SFONDO_SCENA.hex}'. ` +
+            'Aggiorna examples/scene-background.json, che e\' la sorgente condivisa con from-docs.spec.ts.'
+        );
+    }
+
+    // Il Quick Start esercita SOLO la entry radice. `./core` e `./debug` sono
+    // due sottopath della mappa exports che nessun altro passo di questo gate
+    // toccherebbe: un `types` sbagliato passerebbe la build e un `import`
+    // sbagliato passerebbe il typecheck, ognuno invisibile all'altro. Questo
+    // file li importa entrambi e ne usa il risultato a runtime, cosi' il passo
+    // 5 li verifica con tsc E con vite, e il bundler non puo' eliderli prima.
+    writeFileSync(join(dir, 'src/entry.ts'), [
+        "import { createProjection } from 'phaser-isometric/core';",
+        "import { createIsoDebug } from 'phaser-isometric/debug';",
+        "import './main';",
+        '',
+        "// Round trip esatto: e' la proprieta' portante del core, e usarla qui",
+        '// prova che il chunk condiviso e\' arrivato integro nel pacchetto, non',
+        '// solo che il file esiste.',
+        "const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });",
+        'const s = p.project(3, 5);',
+        'const back = p.unproject(s.x, s.y);',
+        'if (Math.abs(back.x - 3) > 1e-6 || Math.abs(back.y - 5) > 1e-6) {',
+        '    throw new Error(`phaser-isometric/core: round trip 3,5 -> ${back.x},${back.y}`);',
+        '}',
+        "if (typeof createIsoDebug !== 'function') {",
+        "    throw new Error('phaser-isometric/debug: createIsoDebug non e\\' una funzione');",
+        '}',
+        "console.log('[verify-tarball] sottopath /core e /debug risolti e funzionanti');",
+        ''
+    ].join('\n'));
 
     console.log('4/6  install');
     run('npm', ['install', '--no-audit', '--no-fund', 'phaser@4.2.1', 'vite@^7.3.6', 'typescript@~5.7.2'], dir);
@@ -91,6 +136,19 @@ try {
 
     const browser = await chromium.launch();
     const page = await browser.newPage();
+
+    // Il controllo dei sottopath in entry.ts NON puo' essere lasciato al suo
+    // `throw`: gli import ESM sono hoisted, quindi `./main` viene valutato
+    // PRIMA del corpo di entry.ts. Se il round trip fallisse, il gioco Phaser
+    // sarebbe gia' partito e il conteggio pixel del passo 6 passerebbe lo
+    // stesso — il gate direbbe verde per un motivo che non ha verificato.
+    // L'unica prova che quel codice sia arrivato in fondo e' il suo marker.
+    const marker = '[verify-tarball] sottopath /core e /debug risolti e funzionanti';
+    const consoleLog = [];
+    const erroriPagina = [];
+    page.on('console', m => consoleLog.push(m.text()));
+    page.on('pageerror', e => erroriPagina.push(e.message));
+
     let ok = false;
     for (let tentativo = 0; tentativo < 30 && !ok; tentativo += 1) {
         try { await page.goto('http://localhost:4319/', { timeout: 1000 }); ok = true; }
@@ -99,6 +157,15 @@ try {
     if (!ok) throw new Error('vite preview non ha risposto');
 
     await page.waitForSelector('canvas', { timeout: 10_000 });
+
+    if (!consoleLog.includes(marker)) {
+        throw new Error(
+            'i sottopath /core e /debug non hanno confermato: entry.ts non e\' arrivato in fondo.\n' +
+            `  console: ${consoleLog.length ? consoleLog.join(' | ') : '(vuota)'}\n` +
+            `  errori di pagina: ${erroriPagina.length ? erroriPagina.join(' | ') : '(nessuno)'}`
+        );
+    }
+    console.log(`\n${marker}`);
 
     // La lettura dei pixel DEVE avvenire nello stesso callback rAF che
     // aspetta il render: il canvas WebGL di Phaser ha preserveDrawingBuffer
@@ -109,7 +176,7 @@ try {
     // anche quando il pacchetto disegna correttamente — un falso negativo
     // del gate stesso, non del pacchetto installato. Questa parte e' la
     // correzione gia' rivista e confermata: non toccarla.
-    const { fuoriSfondo, totale } = await page.evaluate(() => new Promise(resolve => {
+    const { fuoriSfondo, totale } = await page.evaluate(SFONDO => new Promise(resolve => {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 const canvas = document.querySelector('canvas');
@@ -132,12 +199,11 @@ try {
                 // rosso. Lo strumento corretto e' quello gia' in uso su
                 // questa stessa identica scena in
                 // examples/e2e/from-docs.spec.ts: uno sfondo LETTERALE, non
-                // inferito dal canvas. Il game config del Quick Start
-                // (copiato pari pari da examples/quickstart/src/main.ts,
-                // riga 60) fissa backgroundColor: '#11141a' = rgb(17,20,26);
-                // il margine sotto assorbe compressione e antialiasing,
-                // stessa scatola RGB del test Playwright gemello.
-                const SFONDO = { rMax: 40, gMax: 45, bMax: 55 };
+                // inferito dal canvas. La scatola arriva ora da
+                // examples/scene-background.json — la stessa che usa il test
+                // Playwright gemello, non piu' un letterale duplicato qui — e
+                // il passo 3 sopra verifica che il Quick Start dichiari ancora
+                // quel colore.
                 let fuoriSfondo = 0;
                 for (let i = 0; i < data.length; i += 4) {
                     const dentroSfondo =
@@ -149,7 +215,7 @@ try {
                 resolve({ fuoriSfondo, totale: width * height });
             });
         });
-    }));
+    }), SFONDO_SCENA.box);
 
     await browser.close();
 
@@ -159,6 +225,19 @@ try {
     // del canvas (vedi task-13-report.md), ben al di sopra della soglia
     // scelta qui sotto; un pacchetto che non disegna nulla lascia il canvas
     // interamente dentro la scatola di sfondo, 0% fuori.
+    //
+    // IL MARGINE, non il passaggio. Questo 10% ha 8,5x di margine OGGI, ma il
+    // margine non e' una proprieta' del pacchetto: e' una proprieta' del
+    // FOOTPRINT DISEGNATO dal Quick Start, che degrada col quadrato della
+    // griglia. Misurato sullo stesso pacchetto sano riducendo solo la costante
+    // GRID di examples/quickstart/src/main.ts:
+    //
+    //     GRID=24 -> 85%     GRID=8 -> 24%     GRID=4 -> 6,667%, ROSSO
+    //
+    // Rimpicciolire la griglia dell'esempio e' una modifica ordinaria che
+    // qualcuno fara' per ragioni che non c'entrano niente con questo gate, e
+    // produrrebbe un "non ha disegnato" sicuro di se' su un pacchetto perfetto.
+    // Se tocchi GRID, rimisura questa frazione prima di fidarti del rosso.
     const SOGLIA_FRAZIONE = 0.10;
     const frazione = fuoriSfondo / totale;
     console.log(

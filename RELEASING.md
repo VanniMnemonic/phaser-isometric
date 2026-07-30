@@ -70,7 +70,21 @@ login` has **not** been run on this development machine — check with
 `npm whoami` before assuming otherwise, and log in if it errors. This is a
 blocking, manual, interactive step: it cannot be scripted or assumed done.
 
-## 5. What `0.1.0` commits to, and what it does not
+## 5. Move the release out of `[Unreleased]` in `CHANGELOG.md`
+
+`CHANGELOG.md` lives at the repository root and, like this file, deliberately
+does not ship in the tarball — npm's own always-included set is `package.json`,
+`README` and `LICENSE`, and `files` in `packages/plugin/package.json` is frozen
+by an equality assertion in `packaging.test.ts`, so adding to it is a
+deliberate packaging change, not a side effect of writing a changelog entry.
+GitHub and npm's web UI both read it from the repository.
+
+Before publishing: move whatever sits under `[Unreleased]` into a dated version
+section, and check that the "Known limitations" list still matches what SKILL.md
+says. A changelog that lags the docs is worse than none — it reads as
+authoritative.
+
+## 6. What `0.1.0` commits to, and what it does not
 
 The version is `0.1.0`. Below `1.0.0`, semver explicitly permits a breaking
 change inside a minor release — `0.1.0` to `0.2.0` is allowed to change or
@@ -88,5 +102,6 @@ reading it here first.
 - [ ] `pnpm verify:tarball` passes against the tarball about to be published
 - [ ] Any performance number about to be re-quoted was re-measured on an idle
       machine in this release cycle
+- [ ] `CHANGELOG.md` has this version in a dated section, not in `[Unreleased]`
 - [ ] `npm whoami` succeeds (logged in as the intended publishing account)
 - [ ] `npm publish` is run from `packages/plugin`, not the repo root
