@@ -117,6 +117,24 @@ new Phaser.Game({
 | `phaser-isometric/core` | The pure maths. Zero Phaser imports, runs in Node. | Level generators, unit tests, a server that validates moves |
 | `phaser-isometric/debug` | `createIsoDebug` — the ready-made cell-outline overlay | While developing; it stays out of a production bundle unless imported on purpose |
 
+## Check a configuration without running the game
+
+```sh
+npx phaser-isometric diagnose --tile 96x48 --grid 24x24
+```
+
+One card with the matrix and its determinant, how far that matrix sits from singular, the
+depth layout together with the exact row at which keys stop being distinguishable, the world
+bounds for that grid, and the round-trip error. One call instead of five, and no browser.
+
+The command lives **inside the package**, which is the point: it is by construction the
+version you installed, so there is no second artifact that can quietly disagree with your
+code. `--json` returns the same facts as data; `--strict` turns warnings into a non-zero exit
+for CI, and without it the exit code stays 0. A configuration the library would reject prints
+the symptom and the correction as two separate fields rather than one glued sentence.
+
+`npx phaser-isometric help` lists every flag.
+
 ## For agents
 
 The package ships its own agent-facing documentation at `skills/phaser-isometric/SKILL.md`

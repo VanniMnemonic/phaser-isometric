@@ -12,6 +12,47 @@ it will not move under you.
 
 Nothing yet.
 
+## [0.2.0] — 2026-07-31
+
+**Nothing in this release breaks.** The public surface of `phaser-isometric` and
+the `exports` map are byte-identical to `0.1.0`; the version moves because two
+things were added. Said explicitly because, below `1.0.0`, a minor release is
+*permitted* to break, so "0.2.0" alone would leave a reader guessing.
+
+### Added
+
+- **`npx phaser-isometric diagnose`** — a command that prints a decision-grade
+  card about a projection and depth configuration: the matrix and its
+  determinant, how far that matrix sits from singular, the depth layout with the
+  exact row at which keys stop being distinguishable, the world bounds for a
+  grid, the round-trip error, and warnings. One call instead of five, and no
+  browser.
+
+  It ships **inside this package**, deliberately, rather than as a separate MCP
+  server: there is no second artifact, and therefore no way for the oracle to
+  disagree with the version you installed. `--json` returns the same facts as
+  data. `--strict` makes warnings exit 2 for CI; without it a warning is printed
+  and the exit code stays 0. A rejected configuration exits 1 and prints the
+  symptom and the correction as **two separate fields**, never glued into one
+  sentence.
+
+  What is a *warning* is a configuration that will surprise you later — tile
+  centres on half pixels, an `elevationStep` of 0 (which a raw `matrix` spec
+  silently defaults to), a near-singular matrix, a grid reaching past the row the
+  depth layout was validated for. What is an *error* is a configuration the
+  constructors already reject. Three conditions considered for the warning list
+  were dropped because they can never fire: `det === 0`, a fractional origin and
+  an exhausted depth headroom all throw at construction.
+
+- **`buildDiagnosis`, on `phaser-isometric/core` only.** Like `buildDebugModel`,
+  it is a model-builder for tooling, so the plugin entry a Scene imports does not
+  re-export it — and a test walks the import graph of `dist/index.js` to prove
+  the game bundle never carries it.
+
+### Changed
+
+- Nothing. `0.1.0` code compiles and runs unmodified.
+
 ## [0.1.0] — 2026-07-30
 
 First public version.
@@ -64,5 +105,6 @@ match: per-frame cost `0.19-0.25` → **`0.17-0.25 ms`**, baseline `~0.06-0.07` 
 **`~0.05-0.07 ms`**. The ratio claim of 2.5-5x held unchanged, measured at
 2.74-4.67x.
 
-[Unreleased]: https://github.com/VanniMnemonic/phaser-isometric/compare/main...HEAD
+[Unreleased]: https://github.com/VanniMnemonic/phaser-isometric/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/VanniMnemonic/phaser-isometric/releases/tag/v0.2.0
 [0.1.0]: https://github.com/VanniMnemonic/phaser-isometric/releases/tag/v0.1.0

@@ -115,6 +115,39 @@ describe('vincolo architetturale: il core e\' puro', () => {
         }
     });
 
+    it('nessun modulo del core nomina un globale di Node', () => {
+        // Il buco che questa feature ha reso visibile: i due test qui sopra
+        // ispezionano SOLO gli specifier di import. Un `process.stdout.write`
+        // o un `require(...)` dentro il core non importa niente, quindi
+        // passerebbe entrambi — e packages/core/tsconfig.json dichiara
+        // `"types": ["node"]`, quindi compilerebbe anche. Il core deve girare
+        // in un browser tanto quanto in Node: e' l'intera ragione per cui
+        // esiste come sottopath separato.
+        const VIETATI = new Set(['process', 'require', '__dirname', '__filename', 'Buffer']);
+        const files = collect(SRC);
+        expect(files.length, 'nessun modulo del core: il controllo sotto non verificherebbe niente')
+            .toBeGreaterThan(0);
+
+        for (const file of files) {
+            const sourceFile = parse(file, readFileSync(file, 'utf8'));
+            const visit = (node: ts.Node): void => {
+                // Solo l'identificatore NUDO: `d.process` e `{ process: 1 }`
+                // sono nomi di proprieta', non il globale, e vietarli
+                // renderebbe la guardia rumorosa senza renderla piu' forte.
+                if (ts.isIdentifier(node) && VIETATI.has(node.text)) {
+                    const p = node.parent;
+                    const eProprieta =
+                        (ts.isPropertyAccessExpression(p) && p.name === node) ||
+                        (ts.isPropertyAssignment(p) && p.name === node) ||
+                        (ts.isPropertySignature(p) && p.name === node);
+                    expect(eProprieta, `${file} nomina il globale di Node "${node.text}"`).toBe(true);
+                }
+                ts.forEachChild(node, visit);
+            };
+            visit(sourceFile);
+        }
+    });
+
     it('il package.json del core non nomina phaser', () => {
         expect(/phaser/i.test(readFileSync(PKG, 'utf8')), 'packages/core/package.json nomina phaser').toBe(false);
     });

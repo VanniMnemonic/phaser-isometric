@@ -396,6 +396,30 @@ JSON.stringify(snap);   // always succeeds: numbers, strings, booleans, null
 
 Flat and read-only: `mapping`, `booted`, `configured`, `projection`, `depth` layout, `camera` (including `roundPixels`, `following` and the live `view`), `heights` (`none` / `grid` / `custom`) and `isoSprites`. It never throws in any state, including after `destroy()` — it exists to diagnose a plugin that may already be broken.
 
+## Check a configuration without running the game
+
+The package ships a command. Use it to **check an assumption instead of guessing** — before writing the Scene, or when a projection is behaving in a way you cannot explain:
+
+```sh
+npx phaser-isometric diagnose --tile 96x48 --grid 24x24
+```
+
+It prints one card: the matrix and its determinant, how far the matrix is from singular, the depth layout with the exact row at which keys stop being distinguishable, the world bounds for that grid, and the round-trip error. One call instead of five, and no browser.
+
+The command is **inside this package**, so it is by construction the version you installed — there is no second artifact that can drift from it. `--json` gives the same facts as data. Add `--strict` to make warnings exit non-zero for CI; without it a warning is printed and the exit code stays 0.
+
+What it reports as a **warning** is a real configuration that will surprise you later: tile centres landing on half pixels, an `elevationStep` of 0 (which a raw `matrix` spec defaults to, so elevation silently does nothing), a near-singular matrix, a grid reaching past the row the depth layout was validated for. What it reports as an **error** is a configuration the constructors reject outright, and it names the correction:
+
+```sh
+$ npx phaser-isometric diagnose --matrix 1,1,1,1
+## ERROR
+kind=IsoConfigError
+symptom=the projection matrix is not invertible (det = 0, a=1 b=1 c=1 d=1)
+fix=columns (a,b) and (c,d) are collinear: change one of them, or use the diamond preset
+```
+
+Run `npx phaser-isometric help` for every flag.
+
 ## API Quick Reference
 
 ### `IsoPlugin` — reached as `this.iso`

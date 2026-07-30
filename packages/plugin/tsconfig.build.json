@@ -5,5 +5,7 @@
     "declarationDir": "dist/types/plugin",
     "outDir": null
   },
-  "include": ["src"]
+  "include": ["src"],
+  "//": "I tre file della CLI non sono importabili: non hanno un sottopath in exports, e con sideEffects: false un modulo importabile che esporta nulla sarebbe legalmente eliminabile da un bundler. Le loro dichiarazioni sarebbero quindi peso morto nel tarball. Restano typecheckati da tsconfig.test.json, che include src e test.",
+  "exclude": ["src/cli.ts", "src/cli-args.ts", "src/cli-render.ts"]
 }

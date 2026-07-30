@@ -25,7 +25,7 @@ function elencoRicorsivo(dir: string): string[] {
 describe('manifest di pubblicazione', () => {
     it('e pubblicabile', () => {
         expect(PKG.private).toBeUndefined();
-        expect(PKG.version).toBe('0.1.0');
+        expect(PKG.version).toBe('0.2.0');
         expect(PKG.license).toBe('MIT');
         expect(PKG.type).toBe('module');
     });
@@ -80,6 +80,21 @@ describe('manifest di pubblicazione', () => {
 
     it('il campo files espone solo dist, skills e llms.txt', () => {
         expect(new Set(PKG.files)).toEqual(new Set(['dist', 'skills', 'llms.txt']));
+    });
+
+    it('il bin si chiama come il pacchetto e vive dentro dist', () => {
+        // Il nome e' cio' che `npx phaser-isometric` risolve: rinominarlo
+        // rompe la riga che la documentazione promette, in silenzio.
+        expect(PKG.bin).toEqual({ 'phaser-isometric': './dist/cli.js' });
+
+        // E deve stare DENTRO dist, perche' `files` qui sopra e' congelato a
+        // tre voci: un bin in ./bin/ verrebbe dichiarato nel manifest e non
+        // spedito nel tarball, e npm creerebbe un link penzolante all'install.
+        // Questa e' l'asserzione che lega i due campi fra loro.
+        for (const target of Object.values(PKG.bin as Record<string, string>)) {
+            expect(target.startsWith('./dist/'), `${target} e fuori da files`).toBe(true);
+            expect(existsSync(resolve(PKG_DIR, target)), `${target} non esiste`).toBe(true);
+        }
     });
 
     it('non spedisce file .ts, ma i sourcemap si\' - per scelta, non per svista', () => {
