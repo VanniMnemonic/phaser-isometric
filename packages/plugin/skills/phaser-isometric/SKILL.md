@@ -394,11 +394,23 @@ const overlay = createIsoDebug(this.iso, {
     pad: { above: 64, below: 0, sides: 48 },
     show: { coords: true, elevation: true, depthKeys: true }
 });
+// later, whenever heights or the camera view have changed:
 overlay.redraw();
+// and when you are done with it:
 overlay.destroy();
 ```
 
+`createIsoDebug` draws as its last step before returning — the overlay is already on screen when the
+line finishes, not only after a first `redraw()`. Read top to bottom, the snippet above looks like a
+sequence to run in order; the last two calls are not part of it. `redraw()` is for later, whenever the
+heights or the camera view change and the outlines need to catch up; `destroy()` is for when the
+overlay is no longer wanted. A scene that draws the overlay once and never changes its heights or
+camera needs neither call after construction.
+
 With no `area`, it draws whatever `iso.cull(pad)` reports, which is also the cheapest way to watch the culling work. Phaser's own `TilemapLayer.renderDebug` is a no-op for anything that is not orthogonal.
+`pad` above is illustrative, not a default worth copying verbatim: size it the way `iso.cull()`'s own
+pad is sized in Core Concepts — `above: spriteHeight + maxElevation * elevationStep`, `sides:
+spriteWidth / 2` — from your own scene's tile size and height range, not these numbers.
 
 ### The core, with no Phaser at all
 
@@ -449,6 +461,31 @@ Flat and read-only: `mapping`, `booted`, `configured`, `projection`, `depth` lay
 ### `IsoSprite`
 
 `gx`, `gy`, `elevation`, `band`, `sub`, and `setCell(gx, gy, elevation?, band?, sub?)`. Created through `this.add.isoSprite(gx, gy, texture, frame?)`.
+
+### `IsoDebugOverlay` — returned by `createIsoDebug`, from `phaser-isometric/debug`
+
+| Member | Signature | Notes |
+|---|---|---|
+| `graphics` | `Phaser.GameObjects.Graphics` | The outlines are stroked into this; re-parent, tint or hide it directly |
+| `cellsDrawn` | `number` | How many cells the last draw actually produced an outline for |
+| `redraw` | `() => this` | Rebuilds the model from the plugin's CURRENT state and redraws; not needed after construction unless heights or the camera view changed since |
+| `setArea` | `(area: GridRect) => this` | Draws a different area from now on, and redraws immediately |
+| `destroy` | `() => void` | Removes the Graphics and every label from the Scene |
+
+`createIsoDebug(iso, opts?)` draws once, synchronously, before returning this overlay.
+
+### `IsoDebugOptions` — the second argument to `createIsoDebug`
+
+| Field | Type | Notes |
+|---|---|---|
+| `area` | `GridRect?` | Cells to draw. Defaults to whatever `iso.cull(pad)` reports |
+| `pad` | `{ above, below, sides }?` | Padding handed to `iso.cull()` when `area` is omitted; ignored when `area` is given |
+| `show` | `{ coords?, elevation?, depthKeys? }?` | Which labels to draw per cell; omit a flag to leave that label off |
+| `band` | `number?` | Band used for the depth-key labels, e.g. `this.iso.bands.overlay` |
+| `color` | `number?` | Outline colour, `0xRRGGBB` |
+| `alpha` | `number?` | Outline alpha, 0 to 1 |
+| `textColor` | `string?` | Label colour, as a CSS string |
+| `fontSize` | `string?` | Label size, as a CSS string |
 
 ### Core exports, from either entry point
 

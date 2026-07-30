@@ -63,11 +63,13 @@ class FromDocsScene extends Phaser.Scene {
             if (cell) hero.setCell(cell.gx, cell.gy, cell.z, this.iso.bands.hero);
         });
 
-        const overlay = createIsoDebug(this.iso, {
+        // `createIsoDebug` draws immediately, before it returns — no
+        // `redraw()` needed here, since this scene never changes its
+        // heights or its camera after this point.
+        createIsoDebug(this.iso, {
             pad: { above: 64, below: 0, sides: 48 },
             show: { coords: true, elevation: true, depthKeys: true }
         });
-        overlay.redraw();
     }
 }
 
