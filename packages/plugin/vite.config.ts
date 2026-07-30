@@ -11,8 +11,21 @@ import { fileURLToPath } from 'node:url';
  * published dependency, and Rollup hoists the part both entries share into a
  * single chunk, so `phaser-isometric` and `phaser-isometric/core` keep one
  * module instance between them.
+ *
+ * `root` is anchored to this file's own directory, not left to Vite's
+ * default. Vite resolves a relative `build.outDir` against `root`, and
+ * `root` defaults to `process.cwd()` — the invoking shell's directory, not
+ * the directory of this config file. Without an explicit `root`, running
+ * this exact config from the repository root (`vite build --config
+ * packages/plugin/vite.config.ts`) would resolve `outDir: 'dist'` to
+ * `<repo-root>/dist/` and, because `emptyOutDir` is true, wipe it on every
+ * build. Pinning `root` here makes the output land in
+ * `packages/plugin/dist/` regardless of the caller's working directory.
  */
+const PACKAGE_ROOT = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
+    root: PACKAGE_ROOT,
     build: {
         outDir: 'dist',
         emptyOutDir: true,

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const PKG_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PKG = JSON.parse(
-    readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf8')
+    readFileSync(resolve(PKG_DIR, 'package.json'), 'utf8')
 ) as Record<string, any>;
 
 describe('manifest di pubblicazione', () => {
@@ -29,13 +30,53 @@ describe('manifest di pubblicazione', () => {
             // L'ordine conta davvero: le condizioni si risolvono in ordine di
             // dichiarazione, e un `import` prima di `types` fa vincere il .js.
             expect(Object.keys(entry)[0], key).toBe('types');
-            expect(entry.types, key).toMatch(/\.d\.ts$/);
+            expect(entry.types, key).toMatch(/^\.\/dist\/types\/.+\.d\.ts$/);
             expect(entry.import, key).toMatch(/^\.\/dist\/.+\.js$/);
+        }
+    });
+
+    it('congela l\'insieme delle condizioni, non solo il loro ordine', () => {
+        // Il test sopra guarda solo la PRIMA chiave: una condizione intrusa
+        // in coda (`require`, un formato CJS mai costruito) o una condizione
+        // mancante gli sfugge del tutto. Qui l'insieme intero deve
+        // coincidere, ne' piu' ne' meno.
+        const CONDIZIONI_ATTESE = new Set(['types', 'import', 'default']);
+        for (const key of ['.', './core', './debug']) {
+            const entry = PKG.exports[key];
+            expect(new Set(Object.keys(entry)), key).toEqual(CONDIZIONI_ATTESE);
+        }
+    });
+
+    it('ogni percorso della mappa exports risolve a un file che esiste', () => {
+        // Lega il manifest al disco: ogni altro controllo qui sopra guarda
+        // solo la FORMA della stringa (l'ordine, l'estensione, il prefisso
+        // ./dist/), mai il file che ci sta dietro. Un nome cablato male o
+        // rinominato dopo un refactor della build passerebbe ogni test di
+        // forma restando comunque rotto per un consumatore reale.
+        for (const [key, value] of Object.entries(PKG.exports)) {
+            if (typeof value === 'string') {
+                expect(existsSync(resolve(PKG_DIR, value)), `${key} -> ${value}`).toBe(true);
+                continue;
+            }
+            for (const [condizione, target] of Object.entries(value as Record<string, string>)) {
+                expect(existsSync(resolve(PKG_DIR, target)), `${key}[${condizione}] -> ${target}`).toBe(true);
+            }
         }
     });
 
     it('non spedisce sorgenti', () => {
         expect(new Set(PKG.files)).toEqual(new Set(['dist', 'skills', 'llms.txt']));
+    });
+
+    it('non lascia main o types come seconda via di risoluzione', () => {
+        // Con `exports` presente, Node e i bundler moderni li ignorano
+        // comunque, ma uno strumento che legge ancora `main`/`types` invece
+        // di `exports` (o un vecchio bundler) risalirebbe fino a
+        // `src/index.ts`: TypeScript non compilato spedito a chi non se lo
+        // aspetta. L'unica via di risoluzione pubblicata deve restare
+        // `exports`.
+        expect(PKG.main).toBeUndefined();
+        expect(PKG.types).toBeUndefined();
     });
 
     it('tiene phaser fuori dalle dipendenze installate', () => {
