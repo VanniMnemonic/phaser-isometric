@@ -1,0 +1,44 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.17.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build the library
+        run: pnpm build
+
+      - name: Unit and integration tests
+        run: pnpm test
+
+      - name: Typecheck every project, including a real consumer
+        run: pnpm typecheck
+
+      - name: Shipped docs are regenerated from their sources
+        run: pnpm docs:check
+
+      - name: Install Chromium for the browser gate
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The benchmark is excluded: the baseline in bench-baseline.json was
+      # measured on an Apple M1 Max, and a shared runner would produce a red
+      # that means nothing.
+      - name: Browser gate, benchmark excluded
+        run: pnpm e2e:ci

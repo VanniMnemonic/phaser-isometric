@@ -2,5 +2,7 @@ packages:
   - 'packages/*'
   - 'consumer'
   - 'examples'
+  - 'examples/quickstart'
+  - 'examples/from-docs'
 allowBuilds:
   esbuild: true

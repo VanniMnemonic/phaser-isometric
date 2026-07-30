@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "emitDeclarationOnly": true,
+    "declarationDir": "../plugin/dist/types/core",
+    "outDir": null
+  },
+  "include": ["src"]
+}

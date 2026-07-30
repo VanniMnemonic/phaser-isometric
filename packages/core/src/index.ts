@@ -27,6 +27,9 @@ export type { CullPadding } from './culling';
 export { diamondPoints } from './hit-area';
 export type { DiamondPointsOptions } from './hit-area';
 
+export { buildDebugModel } from './debug-model';
+export type { DebugModel, DebugModelOptions, DebugLabel } from './debug-model';
+
 export { worldBounds, contentBounds } from './bounds';
 
 export { IsoConfigError } from './errors';

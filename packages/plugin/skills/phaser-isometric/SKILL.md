@@ -1,0 +1,529 @@
+---
+name: phaser-isometric
+description: "Use this skill when building an isometric or 2.5D diamond-grid game in Phaser 4 with the phaser-isometric package. Covers installing the Scene plugin, the projection and its centre-of-top-face convention, IsoSprite, tie-free depth ordering with bands, elevation-aware cell picking, view culling, isometric camera bounds, diamond hit areas and the debug overlay. Triggers on: isometric, iso grid, diamond tiles, IsoSprite, isoScenePlugin, depth sorting, elevation, tile picking, 2.5D, phaser-isometric."
+---
+
+# Phaser Isometric
+
+> `phaser-isometric` is a Scene plugin for Phaser 4 that turns grid coordinates into screen coordinates and back. It owns four things Phaser 4 does not do correctly on an isometric map: a projection whose round trip is exact, a depth key that can never tie, elevation-aware picking that agrees with a real click to the pixel, and view culling (Phaser 4 performs none of its own). Everything numeric lives in a Phaser-free core; the plugin is the shell that wires it to a Scene.
+
+**Key source paths:** in the repository, not in the installed package — the published tarball ships only `dist`, `skills` and `llms.txt`, none of it under `src/`. On GitHub, under `https://github.com/VanniMnemonic/phaser-isometric/blob/main/`: `packages/core/src/projection.ts`, `packages/core/src/depth.ts`, `packages/core/src/picking.ts`, `packages/core/src/culling.ts`, `packages/core/src/bounds.ts`, `packages/plugin/src/plugin.ts`, `packages/plugin/src/iso-sprite.ts`, `packages/plugin/src/debug.ts`.
+**Related skills:** ../../../phaser/skills/tilemaps/SKILL.md, ../../../phaser/skills/game-object-components/SKILL.md, ../../../phaser/skills/scenes/SKILL.md
+
+## Install
+
+```bash
+npm install phaser-isometric phaser
+```
+
+`phaser` `^4.0.0` is a peer dependency **declared optional**, which is exactly the flag that stops npm 7+ and pnpm from installing it for you — name it explicitly, or the first `import Phaser from 'phaser'` fails to resolve. It is optional because a program that imports only `phaser-isometric/core` needs neither Phaser nor a DOM.
+
+Three entry points, and they are the whole public surface:
+
+| Import | What it is | When |
+|---|---|---|
+| `phaser-isometric` | The plugin — `isoScenePlugin`, `IsoPlugin`, `IsoSprite` — plus the core's projection, depth, height-grid, picking, culling, bounds and hit-area exports re-exported | In a Scene |
+| `phaser-isometric/core` | The pure maths. Zero Phaser imports, runs in Node. Also the only home of `buildDebugModel`, if you want to draw your own debug view | Level generators, unit tests, a server that validates moves |
+| `phaser-isometric/debug` | `createIsoDebug` — the ready-made cell-outline overlay | While developing; it stays out of a production bundle unless imported on purpose |
+
+TypeScript, in your `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM"],
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
+```
+
+`skipLibCheck: true` is not optional. Phaser's own `types/phaser.d.ts` does not typecheck by itself — 2 errors on 4.2.1, 5 on 4.0.0, and the set changes between patch releases. They are all inside `.d.ts` files, so `skipLibCheck` suppresses them; nothing you write can fix them.
+
+`this.iso` and `this.add.isoSprite(...)` are typed by a global augmentation the package ships and references from its own type entry. Importing anything from `phaser-isometric` in the program is enough — do not write an augmentation of your own.
+
+## Quick Start
+
+<!-- BEGIN quickstart -->
+```ts
+import Phaser from 'phaser';
+import { isoScenePlugin, createHeightGrid } from 'phaser-isometric';
+
+const GRID = 24;
+
+class Level extends Phaser.Scene {
+    create(): void {
+        // The projection was set once, in the game config below, so every
+        // Scene shares it. For a per-Scene projection instead, drop it there
+        // and call `this.iso.configure({ ... })` here.
+
+        // The heightmap is where elevation lives: one integer per cell, and
+        // `null` for a cell with no ground at all.
+        const heights = createHeightGrid(GRID, GRID, 0);
+        heights.setHeight(6, 6, 2);
+        heights.setHeight(20, 20, null);
+        this.iso.setHeights(heights);
+
+        // Isometric world bounds are NOT the orthogonal ones: the world is
+        // (W+H) tiles wide and starts at a NEGATIVE x.
+        this.iso.cameraBounds(GRID, GRID);
+
+        // A flat 96x48 texture, so the example needs no asset files.
+        const g = this.add.graphics();
+        g.fillStyle(0x3d5a80, 1).fillRect(0, 0, 96, 48);
+        g.generateTexture('tile', 96, 48);
+        g.destroy();
+
+        for (let gy = 0; gy < GRID; gy += 1) {
+            for (let gx = 0; gx < GRID; gx += 1) {
+                const z = heights.heightAt(gx, gy);
+                if (z === null) continue;
+                const tile = this.add.isoSprite(gx, gy, 'tile');
+                tile.setCell(gx, gy, z, this.iso.bands.floor);
+                // The default hit area is a rectangle over the whole frame,
+                // which on a diamond over-covers by roughly double and steals
+                // clicks from its neighbours.
+                this.iso.makeDiamondHitArea(tile);
+            }
+        }
+
+        const hero = this.add.isoSprite(3, 3, 'tile');
+        hero.setCell(3, 3, 0, this.iso.bands.hero);
+        this.iso.follow(hero);
+
+        // `pick` respects elevation, and is independent of what was rendered
+        // last frame - unlike Phaser's own object hit-testing.
+        this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+            const cell = this.iso.pick(p.worldX, p.worldY);
+            if (cell) hero.setCell(cell.gx, cell.gy, cell.z, this.iso.bands.hero);
+        });
+    }
+}
+
+new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game',
+    width: 960,
+    height: 720,
+    backgroundColor: '#11141a',
+    // `isoScenePlugin` fills in the `mapping` for you, and `mapping` is
+    // MANDATORY: without it Phaser silently mounts the plugin on
+    // `scene["null"]` and every call above is a TypeError.
+    plugins: {
+        scene: [isoScenePlugin({
+            projection: { type: 'diamond', tileWidth: 96, tileHeight: 48 }
+        })]
+    },
+    scene: [Level]
+});
+```
+<!-- END quickstart -->
+
+## Four Traps, Before Anything Else
+
+These are the failures an agent reproduces when it starts from a Phaser 3 example or from Phaser 4's own JSDoc. Each one is silent: no error, no warning, no failed build.
+
+### 1. `useDefineForClassFields` and any field that shadows a Phaser accessor
+
+`IsoSprite` writes `declare depth: number`, which emits no code at all. That matters for **anyone who subclasses it**, because a subclass compiles with its OWN `tsconfig.json`. Under `useDefineForClassFields: true` — the default for `target: ES2022` and up, and what most real projects run — a plain class field emits `Object.defineProperty` in the constructor. If its name collides with an accessor on Phaser's prototype, the new own property **shadows the setter**. The value reads back correctly forever, while `_depth` never moves and the renderer keeps sorting on a zero.
+
+```ts
+class BrokenUnit extends IsoSprite {
+    depth = 0;               // WRONG: shadows Phaser's setter, sorting silently dies
+}
+
+class Unit extends IsoSprite {
+    declare depth: number;   // right: a type-only re-declaration, emits nothing
+    hp = 100;                // any name Phaser does not own is fine
+}
+```
+
+TypeScript does not warn, because `phaser.d.ts` declares `depth` as a flat property. The accessors at risk are **`depth`, `scale`, `angle`, `rotation`**. `x`, `y`, `z` and `w` are plain data properties that `Sprite`'s constructor assigns, so a field of those names is merely redundant, not destructive.
+
+This is why an `IsoSprite`'s height is called `elevation` and not `z`.
+
+### 2. `declare global`, never `declare module 'phaser'`
+
+The Phaser 3 idiom augments nothing in Phaser 4. Measured: `declare module 'phaser' { namespace Phaser { ... } }` compiles clean, creates `Phaser.Phaser`, and the consumer gets `TS2339: Property 'iso' does not exist on type 'Scene'` with no indication why. In a file with any import or export, the only form that works is:
+
+```ts
+import type { IsoPlugin } from 'phaser-isometric';
+
+declare global {
+    namespace Phaser {
+        interface Scene { iso: IsoPlugin }
+    }
+}
+export {};
+```
+
+The package already ships exactly this declaration, so there is nothing to copy — the form is here because it is the one to use when you augment `Phaser.Scene` for a plugin of your own.
+
+### 3. `mapping` is mandatory, and it is not the `key`
+
+Phaser reads exactly three fields from a `plugins.scene` entry: `key`, `plugin`, `mapping`. With `mapping` omitted it resolves to `null`, and the plugin is mounted on the string property `"null"` — `sys["null"]` and `scene["null"]` — with no warning and no throw. `this.iso` is then `undefined` and every call is a `TypeError`.
+
+It is the **`mapping`**, not the `key`, that becomes both the Scene property and the third constructor argument. `installScenePlugin`'s JSDoc states the opposite. And `systemKey` / `sceneKey`, which appear in Phaser's own official `@example` for `PluginObjectItem`, are dead fields here — they are read only on the Loader path.
+
+Use `isoScenePlugin()`. It defaults `mapping` to `'iso'` and cannot produce the broken shape. If a hand-written entry ever does, the plugin `console.warn`s at boot.
+
+### 4. `sideEffects: false` — install the plugin, do not import it
+
+The package declares `"sideEffects": false`, which is honest only because the `isoSprite` factory is registered inside the plugin's constructor rather than at module top level. The consequence for you: **`import 'phaser-isometric'` on its own registers nothing** and is removed by tree-shaking. The plugin has to reach `plugins.scene` in the game config (or `this.plugins.installScenePlugin`) to exist at all.
+
+## Core Concepts
+
+### The projection, and the single convention it rests on
+
+**`project(gx, gy, z)` returns the CENTRE of the cell's top face.**
+
+That choice is what makes the round trip exact instead of approximate: the grid-space unit square centred on the cell is what the matrix maps onto the diamond, corner for corner and edge for edge. It is also precisely where Phaser contradicts itself — `IsometricTileToWorldXY` returns the top-left corner of the bounding box while `IsometricWorldToTileXY` assumes the diamond's top vertex, so its round trip comes out shifted by half a cell and tile `(0,0)` returns as `(-1,0)`.
+
+A projection is built from one of two specs:
+
+```ts
+{ type: 'diamond', tileWidth: 96, tileHeight: 48, elevationStep?: number }
+{ type: 'matrix', a: number, b: number, c: number, d: number, elevationStep?: number }
+```
+
+The diamond preset sets `a = tileWidth/2`, `b = tileHeight/2`, `c = -tileWidth/2`, `d = tileHeight/2`, and `elevationStep` defaults to `tileHeight/2` (to `0` for a raw matrix). A matrix whose determinant is zero is rejected at construction.
+
+```
+screenX = a*gx + c*gy + origin.x
+screenY = b*gx + d*gy - z*elevationStep + origin.y
+```
+
+Elevation moves the target **up** the screen. `origin` is an optional translation and must have integer components: a fractional origin reintroduces exactly the rounding the centre convention removes.
+
+`unproject(sx, sy, z?)` inverts it and returns **grid** coordinates — fractional, despite sharing the `Point` shape. Round them to reach a cell, or use `pick()`, which knows the tie-break rule. `cornersOf(gx, gy, z?)` gives the four diamond vertices clockwise from the top; it exists because Phaser's `GetTileCorners` is a no-op for `ISOMETRIC`.
+
+### Depth: one integer, and no ties
+
+Phaser's display-list comparator is exactly `a._depth - b._depth`. It is fixed, it has no hook, and when two depths tie the order falls back to display-list insertion order. The guarantee therefore has to be built into the key:
+
+```
+key = (gx + gy + rowOffset) * rowStride + band * bandStride + sub
+```
+
+`DEFAULT_LAYOUT` is `{ rowStride: 4096, bandStride: 256, subCapacity: 256, maxBands: 16, rowOffset: 0 }`. The worst value reachable inside one row is `(16-1)*256 + (256-1) = 4095 < 4096`, so a row can never reach into the next one — rows dominate bands, bands dominate subs. The seven named bands occupy `7 * 256 = 1792`, comfortably inside that:
+
+| Band | Index | For |
+|---|---|---|
+| `floor` | 0 | Ground tiles |
+| `decal` | 1 | Paint on the ground |
+| `prop` | 2 | Static scenery (the default for `place()`) |
+| `item` | 3 | Pickups |
+| `actor` | 4 | Units |
+| `hero` | 5 | The player |
+| `overlay` | 6 | Selection rings, health bars |
+
+Reach them as `this.iso.bands.hero`. Validation is split by cost: layout coherence is checked once at construction (positive integers, bands must not spill into the next row, the worst key must stay a safe integer given `maxRow`, default 4096), while `gx`/`gy` integrality, `band` within `0..maxBands-1` and `sub` within `0..subCapacity-1` are checked on every `keyFor`. A fractional `gx` throws, because a half-step actor would break the row-dominates-band ordering.
+
+For negative grid coordinates, raise `rowOffset` so `gx + gy + rowOffset` stays non-negative.
+
+### Elevation, and where heights come from
+
+`HeightSource` is an interface, not a class — bring your own data:
+
+```ts
+interface HeightSource {
+    heightAt(gx: number, gy: number): number | null;
+    readonly maxElevation?: number;
+}
+```
+
+`null` means **abyss**: a cell with no ground, which is a different thing from elevation `0`, valid walkable ground. An `if (!h)` test conflates them, and that is the classic defect of every sparse heightmap.
+
+Elevations are integers, by contract, and heights that are not all whole steps apart become unreachable: `pick` probes one integer step at a time **downward from `maxElevation`**, so it tests exactly `maxElevation`, `maxElevation - 1`, and so on. In a grid whose ceiling is `2.5`, the cells at `2.5` are found and every cell at an integer height — `0` included — is never probed at all. Keep the whole source on one integer lattice.
+
+`maxElevation` is an optional capability. When a source does not expose it and the caller passes no `opts.maxElevation`, picking defaults to `0` and probes the floor only — everything raised becomes silently unpickable.
+
+`createHeightGrid(width, height, fill = 0)` is one implementation: a dense `Float64Array`, `setHeight(gx, gy, z | null)`, and a `maxElevation` that is a monotonic upper bound (it does not drop when a cell is lowered, which is all picking needs).
+
+### Picking a cell, and the half-down parity on `gy`
+
+`iso.pick(worldX, worldY, opts?)` returns `{ gx, gy, z }` or `null`. Pass `pointer.worldX` / `pointer.worldY`, never `pointer.x` / `pointer.y`.
+
+It iterates elevation **downward** from `maxElevation` and returns the first candidate whose height matches exactly. The direction is the part intuition gets wrong: for a fixed screen point, `gx + gy` grows with `z`, so a taller candidate sits farther *forward*, and the pixel shows the largest `z`. Concretely, the top of a near tower covers the distant floor behind it. Cost is `O(maxElevation - minElevation)`, pixel-exact, with no hit test involved.
+
+**The parity on `gy` is deliberately half-down.** `gx` rounds the ordinary way; `gy` uses `-Math.round(-y)`, which agrees with `Math.round` everywhere except an exact `.5`, where it returns `n` instead of `n+1`. That gives `pick()` the same half of a shared boundary that `Phaser.Geom.Polygon.Contains` gives the clickable diamond. Without it, `pick()` and a real click named different cells on **5,471 pixels out of 691,200** of canvas — about one pixel in 127, deterministically. It was found by comparing the two in a real browser, not by reasoning: the diamond tiling leaves no point contested or orphaned, so this was two correct implementations disagreeing on a tie.
+
+Declared limit: `pick()` finds **top faces only**. The vertical side of a column is not pickable — that needs a volumetric model, which one-elevation-per-cell does not have.
+
+### Culling, and the view the camera actually has
+
+Phaser 4 performs **no per-sprite culling**: `BaseCamera.cull()` is not called from anywhere in the render path, and `disableCull` is inert for Sprites. `iso.cull(pad)` is not an optimisation layered on an existing one — it is the only one there is.
+
+It unprojects the four corners of the widened view and takes the AABB in grid space: four inversions per call, regardless of map size. (Phaser's own `IsometricCullTiles` instead walks the entire map every frame — 40,000 conversions on a 200x200 map.) Both ends of the returned `GridRect` are **inclusive**, and the result is deliberately conservative: it can include a cell that is not visible, never exclude one that is.
+
+```ts
+const pad = {
+    above: spriteHeight + maxElevation * elevationStep,  // elevation lifts sprites on screen
+    below: 0,                                            // 0 for a sprite anchored at its feet
+    sides: spriteWidth / 2
+};
+const { minX, maxX, minY, maxY } = this.iso.cull(pad);
+```
+
+`iso.view()` computes the camera's world rectangle **now**, and is not `camera.worldView`. That property is written only inside `Camera.preRender`, which runs in the render phase, so every hook a plugin can reach reads the previous frame's value — and `{0,0,0,0}` on the first frame.
+
+### `setRoundPixels(true)` does not survive a camera zoom
+
+Measured on Phaser 4.2.1, and worth a paragraph rather than a footnote if the game is pixel art.
+
+Under WebGL, rounding is decided per Game Object by `willRoundVertices(camera, onlyTranslated)`. The default mode, `safeAuto`, returns `onlyTranslated && camera.roundPixels`, and `onlyTranslated` is recomputed per draw as `cmm[0] === 1 && cmm[1] === 0 && cmm[2] === 0 && cmm[3] === 1` — the composed matrix has to be a pure translation. **Any** zoom other than `1` puts a scale component in that matrix, an integer `zoom: 2` included, so the vertex rounding never runs no matter how emphatically `setRoundPixels(true)` was called. The integer-zoom guard people remember lives in `renderRoundPixels`, which only the **Canvas** renderer reads. The same mechanism means a rotated or scaled sprite is never vertex-rounded either.
+
+What that means for your game: keep the main camera at zoom `1` — not "an integer zoom", `1` — and get the magnification from the Scale Manager or from larger tile art. If a zoom is a requirement, expect sub-pixel seams between diamonds and do not spend the afternoon hunting for the flaw in the tile art: there is none.
+
+Related, and handled for you: `camera.startFollow(target)` sets `roundPixels = false` unconditionally, and `stopFollow` never restores it. `iso.follow()` reads the current value first and passes it back in, so following does not silently disable pixel rounding. A hand-written `startFollow` is yours to protect.
+
+### Errors name the correction, not the symptom
+
+Every `throw` in this package carries a fix. `IsoConfigError` reports an invalid **value** and formats as `<symptom>. Fix: <correction>`; `IsoUsageError` reports a **sequence of calls that cannot work**. The split is deliberate, because the correction differs: one is a number to change, the other is a call to move.
+
+```
+band 20 is outside the layout (allowed 0..15). Fix: use a valid band, or raise maxBands in the layout
+the isometric plugin has no projection yet, so `this.iso.projection` cannot be read. Fix: call
+    this.iso.configure(...) from your Scene's create(), or install it already configured with
+    isoScenePlugin({ projection: { type: "diamond", tileWidth: 96, tileHeight: 48 } })
+    (equivalent to IsoPlugin.withDefaults(...) under the hood)
+```
+
+Hot paths never throw on per-frame input: `pick()` and `cull()` do not validate their coordinates or padding each frame. Both still throw when the plugin was never configured — that is a setup error, constant for the life of the Scene, and returning an empty result for it would surface only as "nothing renders".
+
+## Common Patterns
+
+### Install once for the whole game
+
+```ts
+import Phaser from 'phaser';
+import { isoScenePlugin } from 'phaser-isometric';
+
+new Phaser.Game({
+    type: Phaser.AUTO,
+    width: 960,
+    height: 720,
+    plugins: {
+        scene: [isoScenePlugin({
+            projection: { type: 'diamond', tileWidth: 96, tileHeight: 48 }
+        })]
+    },
+    scene: [Level]
+});
+```
+
+`isoScenePlugin` also accepts `mapping` (default `'iso'`), `origin`, and `depth` for a custom layout. Omit `projection` to leave every Scene unconfigured and call `this.iso.configure({ ... })` in `create()` instead — useful when two Scenes need different tile sizes.
+
+### Lay out a floor, from a height grid
+
+```ts
+import { createHeightGrid } from 'phaser-isometric';   // re-exported from the core
+
+create(): void {
+    const heights = createHeightGrid(64, 64, 0);
+    heights.setHeight(6, 6, 2);
+    heights.setHeight(20, 20, null);   // abyss: no ground here
+    this.iso.setHeights(heights);
+
+    for (let gy = 0; gy < 64; gy += 1) {
+        for (let gx = 0; gx < 64; gx += 1) {
+            const z = heights.heightAt(gx, gy);
+            if (z === null) continue;
+            this.add.isoSprite(gx, gy, 'tile').setCell(gx, gy, z, this.iso.bands.floor);
+        }
+    }
+}
+```
+
+`this.add.isoSprite(gx, gy, texture, frame?)` creates the sprite, places it, and adds it to the display list only — exactly like the built-in `Sprite` factory, so animations are not enrolled twice.
+
+### Move an actor
+
+```ts
+hero.setCell(gx, gy, elevation, this.iso.bands.hero);
+```
+
+`setCell` re-projects and re-depths through the same `place()` every other object goes through, and is all-or-nothing: an invalid cell throws before anything on the sprite is written. Omitted arguments keep the sprite's current `elevation`, `band` and `sub`.
+
+For an object that is not an `IsoSprite` — a `Container`, a `Text`, a third-party object — use `place()` directly. It needs only `x`, `y` and `setDepth`:
+
+```ts
+this.iso.place(label, gx, gy, 1, this.iso.bands.overlay, 0);
+```
+
+### Click to select a cell
+
+```ts
+this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+    const cell = this.iso.pick(p.worldX, p.worldY);
+    if (cell) marker.setCell(cell.gx, cell.gy, cell.z, this.iso.bands.overlay);
+});
+```
+
+### Follow, and bound the camera
+
+```ts
+this.iso.cameraBounds(64, 64, { maxElevation: 4 });
+this.iso.follow(hero, { lerp: 0.1 });
+
+// later, when the hero is gone
+this.iso.stopFollow();
+```
+
+`follow()` takes grid coordinates — `{ gx, gy, z?, elevation? }` — and keeps a private screen-space point up to date on `PRE_UPDATE`, so Phaser's own lerp, deadzone and bounds clamping keep working unmodified. When both are present, **`elevation` wins over `z`**; an `IsoSprite` names its height `elevation` for the reason in trap 1, so passing one directly does the right thing.
+
+`cameraBounds(gridWidth, gridHeight, opts?)` uses the isometric extent — `(W+H)*tileWidth/2` wide, starting at a **negative** x because cell `(0, H-1)` is the leftmost vertex. It throws on a non-positive grid, which is what a call made before the tilemap finished loading looks like.
+
+### Diamond hit areas
+
+```ts
+this.iso.makeDiamondHitArea(tile);                              // tile size from the projection
+this.iso.makeDiamondHitArea(tile, { tileWidth: 96, tileHeight: 48 });
+```
+
+Phaser's default hit area is a rectangle over the whole frame, which on a diamond over-covers by roughly a factor of two and steals clicks from the neighbours. This installs a `Phaser.Geom.Polygon` with `Polygon.Contains` as the callback — the same half-open rule `pick()` matches. Re-calling it on an already-interactive object mutates the hit area in place, on purpose (see gotcha 11).
+
+### The debug overlay
+
+```ts
+import { createIsoDebug } from 'phaser-isometric/debug';
+
+const overlay = createIsoDebug(this.iso, {
+    pad: { above: 64, below: 0, sides: 48 },
+    show: { coords: true, elevation: true, depthKeys: true }
+});
+// later, whenever heights or the camera view have changed:
+overlay.redraw();
+// and when you are done with it:
+overlay.destroy();
+```
+
+`createIsoDebug` draws as its last step before returning — the overlay is already on screen when the
+line finishes, not only after a first `redraw()`. Read top to bottom, the snippet above looks like a
+sequence to run in order; the last two calls are not part of it. `redraw()` is for later, whenever the
+heights or the camera view change and the outlines need to catch up; `destroy()` is for when the
+overlay is no longer wanted. A scene that draws the overlay once and never changes its heights or
+camera needs neither call after construction.
+
+With no `area`, it draws whatever `iso.cull(pad)` reports, which is also the cheapest way to watch the culling work. Phaser's own `TilemapLayer.renderDebug` is a no-op for anything that is not orthogonal.
+`pad` above is illustrative, not a default worth copying verbatim: size it the way `iso.cull()`'s own
+pad is sized in Core Concepts — `above: spriteHeight + maxElevation * elevationStep`, `sides:
+spriteWidth / 2` — from your own scene's tile size and height range, not these numbers.
+
+### The core, with no Phaser at all
+
+```ts
+import { createProjection, createDepthAssigner, pick, worldBounds } from 'phaser-isometric/core';
+
+const projection = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+const depth = createDepthAssigner();
+const key = depth.keyFor(3, 4, 4, 0);       // (3+4)*4096 + 4*256 = 29696
+```
+
+No DOM, no canvas, no `Phaser.Game`. This is the half to use in a level generator, in unit tests, or in a server that has to agree with the client about which cell a click named.
+
+### A snapshot for tests and bug reports
+
+```ts
+const snap = this.iso.snapshot();
+JSON.stringify(snap);   // always succeeds: numbers, strings, booleans, null
+```
+
+Flat and read-only: `mapping`, `booted`, `configured`, `projection`, `depth` layout, `camera` (including `roundPixels`, `following` and the live `view`), `heights` (`none` / `grid` / `custom`) and `isoSprites`. It never throws in any state, including after `destroy()` — it exists to diagnose a plugin that may already be broken.
+
+## API Quick Reference
+
+### `IsoPlugin` — reached as `this.iso`
+
+| Member | Signature | Notes |
+|---|---|---|
+| `configure` | `(spec, opts?) => this` | Sets or replaces the projection and depth assigner atomically |
+| `isConfigured` | `boolean` | Never throws; branch on it |
+| `projection` | `Projection` | Throws `IsoUsageError` when unconfigured |
+| `depth` | `DepthAssigner` | Throws `IsoUsageError` when unconfigured |
+| `bands` | `{ floor, decal, prop, item, actor, hero, overlay }` | Indices 0 to 6 |
+| `place` | `(target, gx, gy, z?, band?, sub?) => target` | Needs only `x`, `y`, `setDepth`; all-or-nothing |
+| `follow` | `(target, { lerp?, offsetX?, offsetY? }?) => this` | Grid coordinates; `elevation` beats `z` |
+| `stopFollow` | `() => this` | Leaves `roundPixels` untouched |
+| `view` | `() => Rect` | Computed now, not `camera.worldView` |
+| `cameraBounds` | `(gridWidth, gridHeight, { maxElevation? }?) => this` | Isometric extent, negative x |
+| `setHeights` | `(HeightSource \| null) => this` | The source `pick()` reads; `heights` is the getter for it |
+| `pick` | `(worldX, worldY, { minElevation?, maxElevation? }?) => Cell \| null` | `null` when no heights were set |
+| `cull` | `({ above, below, sides }) => GridRect` | Inclusive, conservative |
+| `makeDiamondHitArea` | `(target, { tileWidth?, tileHeight? }?) => target` | Defaults to the projection's tile size |
+| `snapshot` | `() => IsoSnapshot` | Serialisable; never throws |
+| `isLive` | `boolean` | True between `boot()` and `destroy()` |
+| `graphicsScene` | `Phaser.Scene` | The Scene this plugin is attached to; throws `IsoUsageError` once the Scene is gone (e.g. after shutdown). For the debug overlay and similar tooling that needs the Scene itself, not just `this.iso` |
+
+`IsoPlugin.withDefaults(spec, opts?)` bakes a projection into a subclass; `isoScenePlugin()` calls it for you.
+
+### `IsoSprite`
+
+`gx`, `gy`, `elevation`, `band`, `sub`, and `setCell(gx, gy, elevation?, band?, sub?)`. Created through `this.add.isoSprite(gx, gy, texture, frame?)`.
+
+### `IsoDebugOverlay` — returned by `createIsoDebug`, from `phaser-isometric/debug`
+
+| Member | Signature | Notes |
+|---|---|---|
+| `graphics` | `Phaser.GameObjects.Graphics` | The outlines are stroked into this; re-parent, tint or hide it directly |
+| `cellsDrawn` | `number` | How many cells the last draw actually produced an outline for |
+| `redraw` | `() => this` | Rebuilds the model from the plugin's CURRENT state and redraws; not needed after construction unless heights or the camera view changed since |
+| `setArea` | `(area: GridRect) => this` | Draws a different area from now on, and redraws immediately |
+| `destroy` | `() => void` | Removes the Graphics and every label from the Scene |
+
+`createIsoDebug(iso, opts?)` draws once, synchronously, before returning this overlay.
+
+### `IsoDebugOptions` — the second argument to `createIsoDebug`
+
+| Field | Type | Notes |
+|---|---|---|
+| `area` | `GridRect?` | Cells to draw. Defaults to whatever `iso.cull(pad)` reports |
+| `pad` | `{ above, below, sides }?` | Padding handed to `iso.cull()` when `area` is omitted; ignored when `area` is given |
+| `show` | `{ coords?, elevation?, depthKeys? }?` | Which labels to draw per cell; omit a flag to leave that label off |
+| `band` | `number?` | Band used for the depth-key labels, e.g. `this.iso.bands.overlay` |
+| `color` | `number?` | Outline colour, `0xRRGGBB` |
+| `alpha` | `number?` | Outline alpha, 0 to 1 |
+| `textColor` | `string?` | Label colour, as a CSS string |
+| `fontSize` | `string?` | Label size, as a CSS string |
+
+### Core exports, from either entry point
+
+`createProjection`, `createDepthAssigner`, `createHeightGrid`, `pick`, `cullBounds`, `worldBounds`, `contentBounds`, `diamondPoints`, `tileSizeOf`, `DEFAULT_BANDS`, `DEFAULT_LAYOUT`, `IsoConfigError`.
+
+From the plugin entry only: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyDiamondHitArea`, `IsoUsageError`. From `phaser-isometric/core` only: `buildDebugModel`, with its `DebugModel`, `DebugModelOptions` and `DebugLabel` types — the Phaser-free model behind the overlay, for a debug view of your own.
+
+## Gotchas and Common Mistakes
+
+1. **Two `Phaser.Game` instances on one page: the second silently inherits the first one's plugin.** This is a known, declared limitation. `PluginCache` is a module-level singleton; `installScenePlugin` registers only `if (!hasCore(key))`; and Phaser's duplicate warning fires only within a single `PluginManager`, so a second Game never trips it. A second Game asking for a different projection therefore projects **the entire world with the wrong tile size**, with no signal. Ways out: `Phaser.Plugins.PluginCache.remove(ISO_PLUGIN_KEY)`, or `game.destroy(true, true)` — the second argument is the one that empties the cache. This plugin emits a `console.warn` naming both when it detects it. It bites Vite HMR, a game recreated on level change, and two canvases on one page.
+
+2. **Phaser's object picking is one frame stale; cell picking is not.** Phaser's input does not use `depth` at all: it orders candidates by their index in `camera.renderList`, and that list is rebuilt during `scene.render()` while input polls on the game's `PRE_RENDER`, before it. The ordering used at frame N therefore comes from the render of frame N-1, and a real mouse event is worse still — it is handled synchronously between frames, against whatever the last completed render left behind. For **cells**, use `iso.pick()`: exact, and independent of any render list.
+
+3. **`snapshot().version` is `1`, and it is not the package version.** One is the shape of a data structure, the other is the stability of an API. They move independently, and confusing them costs an hour.
+
+4. **The performance promise, with the clause that belongs to it.** Driving 500 simultaneously active `IsoSprite`s — each re-projected and re-depth-sorted every single frame across a 100x100-cell world, with a following camera and view culling keeping 23-59 of them on screen at any instant — phaser-isometric held the browser's own frame cadence at the median across nine independent runs: an 8.3 ms median frame period, at least 2x inside the 16.6 ms / 60 fps budget (a handful of single-frame outliers up to 34 ms also appeared — this is a median claim, not a claim that every frame met budget). Measured directly — bracketing the plugin's own main-thread update-and-render-submission work, which excludes GPU rasterisation happening asynchronously outside that bracket — per-frame CPU-side cost averaged 0.19-0.25 ms at 500 active entities against a ~0.06-0.07 ms baseline for the same page with none: roughly 2.5-5x the baseline (a range, not a constant, since both terms sit near the browser's ~100 us timing floor). Conditions, which travel with the number: Apple M1 Max laptop, not CI; Chromium headless, WebGL through SwiftShader software rendering. **"500 active" is not "500 drawn on screen"** — culling kept 23-59 of them visible, and the drawn-count claim was never measured.
+
+5. **`z` on a Game Object is inert, and it is not elevation.** `Phaser.GameObjects.Components.Transform` defines `z` as a data property the renderer ignores. `IsoSprite` therefore stores its height in `elevation`. `follow()` resolves `elevation ?? z ?? 0`, so `elevation` wins — without that precedence, `follow(isoSprite)` would still compile, because Transform's own `z` satisfies the structural type, and would follow at elevation 0 forever.
+
+6. **Do not give a Scene its own `plugins: [...]` array.** It replaces the default list rather than extending it, and drops this plugin entirely. The symptom is an `IsoUsageError` from the first `isoSprite` naming exactly this cause.
+
+7. **`GameObjectFactory.register` is first-wins, silent, and global.** One registration serves the whole page. If your game registered its own `isoSprite` first, ours is ignored without a word — and the reverse is equally true.
+
+8. **`init(data)` is never called on a Scene plugin, and the config entry's `data` field is discarded** (Phaser behaviour, measured on 4.2.1 against a typedef that advertises `data`). That is why `IsoPlugin.withDefaults` exists: baking the projection into a subclass is the only way a game-wide default can travel.
+
+9. **`ScenePlugin#destroy` is never invoked by Phaser**, despite its JSDoc — `Systems.destroy` clears a hard-coded list of properties that does not include `sys[mapping]`. This plugin subscribes to the Scene's `DESTROY` event itself. If you write a Scene plugin of your own, do the same, or it retains the Scene and its listeners forever.
+
+10. **A Scene plugin is constructed once per Scene, including Phaser's hidden `__SYSTEM` Scene** — N+1 times for N Scenes. Constructors must be cheap and idempotent; that hidden Scene also shows up in a display-list walk, so filter it out.
+
+11. **Never `removeInteractive()` then `setInteractive()` to replace a hit area** (Phaser behaviour). `removeInteractive` only queues the object for removal, so the `setInteractive` one line later is skipped, and on the next game step the flush clears the *new* `InteractiveObject` — leaving the object not interactive at all. Mutate `input.hitArea` and `input.hitAreaCallback` in place. `makeDiamondHitArea` already does.
+
+12. **`camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels)` is wrong on an isometric map.** Phaser computes those with the orthogonal formula. Use `iso.cameraBounds(...)`.
+
+13. **`polygon.points[i]` are plain `{ x, y }` literals, not `Vector2`** (Phaser behaviour, and its `.d.ts` says otherwise). Calling `.clone()` on one compiles and throws at runtime.
+
+14. **`pointer.worldX` / `pointer.worldY` lag one render.** `getWorldPoint` reads a camera matrix rebuilt only in `Camera.preRender`, so a camera that scrolled during `update()` is not reflected until the next frame. `pick()` is exact for the point it is given; the point itself is Phaser's. It shows up only when the camera moves fast.
+
+15. **`null` is not `0` in a height source.** `null` is the abyss — no ground. `0` is valid, walkable ground. `if (!h)` treats them the same and is the standard way to make holes appear where the floor is.
+
+16. **A fractional `gx`/`gy` throws when a depth key is computed.** An actor halfway between two cells would break the row-dominates-band ordering, so round grid coordinates before placing. Screen-space smoothing belongs on the camera or on the sprite's own tween, not in the cell.

@@ -1,0 +1,16 @@
+{
+  "name": "quickstart",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json && vite build"
+  },
+  "dependencies": {
+    "phaser": "4.2.1",
+    "phaser-isometric": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^7.3.6"
+  }
+}
