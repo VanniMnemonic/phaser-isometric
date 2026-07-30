@@ -55,6 +55,64 @@ export async function samplePixel(page: Page, png: Buffer, x: number, y: number)
     return pixel;
 }
 
+/** An inclusive box in RGB space. Every bound is optional; an omitted one
+ *  does not constrain that channel. */
+export interface ColourRange {
+    rMin?: number; rMax?: number;
+    gMin?: number; gMax?: number;
+    bMin?: number; bMax?: number;
+}
+
+/**
+ * Counts the pixels of a PNG screenshot whose colour falls inside `range`
+ * — or, with `outside` set, the ones that fall outside it.
+ *
+ * Same technique as {@link samplePixels} and for the same reason: it decodes a
+ * static image the compositor already produced, so it needs none of the
+ * `preserveDrawingBuffer` workaround that reading the live WebGL canvas would.
+ *
+ * A plain range rather than a predicate function: `page.evaluate` cannot carry
+ * a closure into the page, and the alternative — shipping predicate source
+ * text and rebuilding it with `new Function` — trades a type-checked argument
+ * for a string nobody checks.
+ */
+export async function countPixels(
+    page: Page,
+    png: Buffer,
+    range: ColourRange,
+    opts: { outside?: boolean } = {}
+): Promise<number> {
+    const base64 = png.toString('base64');
+    const outside = opts.outside ?? false;
+
+    return page.evaluate(async ({ base64, range, outside }) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${base64}`;
+        await img.decode();
+
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('2D context unavailable for pixel counting');
+        ctx.drawImage(img, 0, 0);
+
+        const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const r = data[i] as number;
+            const g = data[i + 1] as number;
+            const b = data[i + 2] as number;
+            const inside =
+                r >= (range.rMin ?? 0) && r <= (range.rMax ?? 255) &&
+                g >= (range.gMin ?? 0) && g <= (range.gMax ?? 255) &&
+                b >= (range.bMin ?? 0) && b <= (range.bMax ?? 255);
+            if (inside !== outside) n += 1;
+        }
+        return n;
+    }, { base64, range, outside });
+}
+
 /**
  * Deterministic PRNG (mulberry32). Same seed, same sequence, every run — the
  * 20 points Proof 4 clicks are reproducible, not re-rolled per CI run.

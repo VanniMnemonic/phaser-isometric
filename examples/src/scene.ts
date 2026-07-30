@@ -1,6 +1,13 @@
 import Phaser from 'phaser';
 import { createHeightGrid, IsoSprite } from 'phaser-isometric';
 import type { IsoPlugin, IsoSnapshot } from 'phaser-isometric';
+// The subpath 'phaser-isometric/debug' does not resolve yet: the plugin's
+// package.json has no `exports` map and no root-level `debug` file, only
+// `src/debug.ts` — confirmed by running `tsc` against the exact specifier
+// before falling back here (TS2307). Task 7 wires the `exports` map; until
+// then this stays a relative import into the package's own source.
+import { createIsoDebug } from '../../packages/plugin/src/debug';
+import type { IsoDebugOverlay } from '../../packages/plugin/src/debug';
 
 /**
  * Everything a Playwright test needs to interrogate the running game,
@@ -11,6 +18,8 @@ export interface IsoPlaygroundHook {
     readonly scene: Phaser.Scene;
     readonly iso: IsoPlugin;
     snapshot: () => IsoSnapshot;
+    /** The debug overlay, or null while it is off. */
+    debug: () => IsoDebugOverlay | null;
 }
 
 declare global {
@@ -94,6 +103,8 @@ export class PlaygroundScene extends Phaser.Scene {
      *  `iso.pick(worldX, worldY)` at the same point to check that Phaser's
      *  own hit-testing and this plugin's picking agree. */
     lastClickedCell: { gx: number; gy: number } | null = null;
+
+    private overlay: IsoDebugOverlay | null = null;
 
     create(): void {
         this.iso.configure({ type: 'diamond', tileWidth: TILE_WIDTH, tileHeight: TILE_HEIGHT });
@@ -212,11 +223,13 @@ export class PlaygroundScene extends Phaser.Scene {
         this.cameras.main.centerOn(center.x, center.y);
 
         this.wireZoomToggle();
+        this.wireDebugToggle();
 
         window.__iso = {
             scene: this,
             iso: this.iso,
-            snapshot: () => this.iso.snapshot()
+            snapshot: () => this.iso.snapshot(),
+            debug: () => this.overlay
         };
     }
 
@@ -232,6 +245,27 @@ export class PlaygroundScene extends Phaser.Scene {
             const next = this.cameras.main.zoom === 1 ? 1.5 : 1;
             this.cameras.main.setZoom(next);
             button.textContent = `zoom: ${next}`;
+        });
+    }
+
+    /** Toggles the debug overlay from the DOM button. Kept out of create()
+     *  so the playground stays readable. */
+    private wireDebugToggle(): void {
+        const button = document.getElementById('debug-toggle');
+        if (!button) return;
+
+        button.addEventListener('click', () => {
+            if (this.overlay) {
+                this.overlay.destroy();
+                this.overlay = null;
+                button.textContent = 'debug: off';
+                return;
+            }
+            this.overlay = createIsoDebug(this.iso, {
+                area: { minX: 0, maxX: GRID_SIZE - 1, minY: 0, maxY: GRID_SIZE - 1 },
+                show: { coords: true, elevation: true }
+            });
+            button.textContent = 'debug: on';
         });
     }
 }
