@@ -30,6 +30,32 @@ export interface PickOptions {
  *
  * Cost O(maxElevation - minElevation), pixel-exact, no hit-test.
  *
+ * TIE-BREAK ON A SHARED CELL BOUNDARY: rounds `gx` up on an exact `.5` (the
+ * ordinary `Math.round` convention) but `gy` DOWN on an exact `.5`, to match
+ * `Phaser.Geom.Polygon.Contains`'s half-open pnpoly rule — the same rule
+ * `makeDiamondHitArea`'s hit areas are built on. This is not an arbitrary
+ * choice: on the `'diamond'` preset's tiling every point belongs to exactly
+ * one cell, never zero and never two, so there is a single correct answer on
+ * every boundary, and this is the convention that makes `pick()` agree with a
+ * real click there. Verified end-to-end in a browser (Task 12): before this,
+ * `pick()` and Phaser's own hit-test disagreed on `gy = n+0.5` — about 1 in
+ * 127 pixels on this scene's grid, a real, everyday-reachable rate.
+ *
+ * SCOPE OF THAT GUARANTEE: `pick()` itself is projection-agnostic — this same
+ * rounding runs for a custom `'matrix'` spec too — but the "matches
+ * `Polygon.Contains`" justification above is specifically about the
+ * `'diamond'` preset. `makeDiamondHitArea` always builds a diamond shape from
+ * `tileWidth`/`tileHeight` alone (via `tileSizeOf`), regardless of what `b`
+ * and `c` actually are; on a custom matrix whose unit square maps to a
+ * genuinely skewed parallelogram (not the diamond preset's `a=tw/2, b=th/2,
+ * c=-tw/2, d=th/2` relation), that hit area is the wrong SHAPE already, not
+ * just wrong at the tie — the boundary-agreement property this section
+ * documents is not claimed to hold there. Measure-zero in practice (most
+ * consumers use the diamond preset, and a custom matrix with its own
+ * intentionally-mismatched hit area is already an edge case), but worth
+ * saying plainly rather than leaving this section's "every point belongs to
+ * exactly one cell" read as a general fact about `Projection`.
+ *
  * DECLARED LIMIT: finds only TOP faces. The vertical side of a column is not
  * pickable — that would need a volumetric model, which the one-elevation-
  * per-cell model does not have.
@@ -76,7 +102,23 @@ export function pick(
         // distingue -0 da +0 (come `toEqual`) altrimenti fallirebbe su un
         // risultato matematicamente corretto.
         const gx = Math.round(scratch.x) + 0;
-        const gy = Math.round(scratch.y) + 0;
+        // gy NON usa Math.round: su `gy = n+0.5` (il confine condiviso fra due
+        // celle) `Math.round` arrotonda in su (verso n+1), ma il rombo di
+        // Phaser (`Phaser.Geom.Polygon.Contains`, la regola pnpoly semiaperta
+        // usata da `makeDiamondHitArea`) assegna quel bordo alla cella `n` —
+        // meta' opposte dello stesso confine, e solo su questo asse (gx e la
+        // sua meta' del rombo sono gia' d'accordo con Math.round). Scoperto
+        // confrontando `pick()` con un vero click in un browser reale (Task
+        // 12 del piano): non un'ambiguita' del punto — la tassellatura del
+        // rombo non lascia MAI un punto conteso ne' orfano — ma due
+        // implementazioni indipendenti con una parita' opposta sullo stesso
+        // confine. `-Math.round(-y)` e' l'arrotondamento "meta' in giu'"
+        // (ties verso -Infinity anziche' verso +Infinity): coincide con
+        // `Math.round` ovunque tranne che sui pareggi esatti, dove restituisce
+        // `n` invece di `n+1` — esattamente cio' che serve per allinearsi al
+        // rombo. Il `+ 0` finale e' la stessa normalizzazione di -0 di gx:
+        // senza, un punto come y=-0.3 restituirebbe -0 invece di 0.
+        const gy = -Math.round(-scratch.y) + 0;
         if (heights.heightAt(gx, gy) === z) {
             // Stessa normalizzazione di gx/gy: se opts.maxElevation e' -0, z parte
             // da -0 e resta tale finche' non viene restituito (===-0 confonde -0 e

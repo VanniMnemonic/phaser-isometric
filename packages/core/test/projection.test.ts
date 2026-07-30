@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProjection } from '../src/projection';
+import { createProjection, tileSizeOf } from '../src/projection';
 import { IsoConfigError } from '../src/errors';
 
 describe('createProjection', () => {
@@ -267,5 +267,24 @@ describe('cornersOf', () => {
         expect(right).toEqual({ x: (40 + 30) / 2, y: (20 - 25) / 2 });
         expect(bottom).toEqual({ x: (40 - 30) / 2, y: (20 + 25) / 2 });
         expect(left).toEqual({ x: -(40 + 30) / 2, y: -(20 - 25) / 2 });
+    });
+});
+
+describe('tileSizeOf', () => {
+    it('inverte il preset diamond: recupera tileWidth/tileHeight dalla matrice', () => {
+        const p = createProjection({ type: 'diamond', tileWidth: 96, tileHeight: 48 });
+        expect(tileSizeOf(p)).toEqual({ tileWidth: 96, tileHeight: 48 });
+    });
+
+    it('funziona per qualunque coppia tileWidth/tileHeight, non solo il default', () => {
+        const p = createProjection({ type: 'diamond', tileWidth: 64, tileHeight: 128 });
+        expect(tileSizeOf(p)).toEqual({ tileWidth: 64, tileHeight: 128 });
+    });
+
+    it('accetta qualunque oggetto strutturalmente compatibile, non solo un Projection vero', () => {
+        // Firma deliberatamente ridotta a { a, d }: chi ha gia' un oggetto con
+        // quei due campi non deve costruire un Projection completo solo per
+        // chiamare questa funzione.
+        expect(tileSizeOf({ a: 10, d: 5 })).toEqual({ tileWidth: 20, tileHeight: 10 });
     });
 });

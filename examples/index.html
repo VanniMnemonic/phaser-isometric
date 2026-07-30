@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>phaser-isometric playground</title>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #11141a;
+            color: #e8e8e8;
+            font-family: system-ui, sans-serif;
+        }
+        #controls {
+            position: fixed;
+            top: 8px;
+            left: 8px;
+            z-index: 1;
+            display: flex;
+            gap: 8px;
+        }
+        #controls button {
+            font: inherit;
+            padding: 6px 10px;
+            cursor: pointer;
+        }
+        #game {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <!-- Every control here is a Playwright target: stable ids, no styling that
+         would change hit-testable geometry. -->
+    <div id="controls">
+        <button id="zoom-toggle" type="button">zoom: 1</button>
+    </div>
+    <div id="game"></div>
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

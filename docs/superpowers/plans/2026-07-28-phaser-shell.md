@@ -28,8 +28,9 @@ mergiato: 102 test, `packages/core` con zero import di Phaser.
 
 Ogni affermazione su Phaser in questo documento è stata **misurata a runtime**, non letta
 nel JSDoc e non ricordata da Phaser 3. Il dossier delle misure è
-`scratchpad/recon-shell/MISURATO-runtime.md`; la prova che le ha prodotte è
-`scratchpad/jsdom-probe/`. Dove il JSDoc di Phaser e la misura non vanno d'accordo, in
+`docs/recon/MISURATO-runtime.md`; la prova che le ha prodotte viveva in una directory di
+scratch **fuori dal repo**, quindi non è consultabile: il dossier è l'unica fonte, e riporta
+per esteso il codice di ogni misura. Dove il JSDoc di Phaser e la misura non vanno d'accordo, in
 questo piano **vince la misura**, e il disaccordo è annotato.
 
 Cinque cose sono state trovate così, e ognuna cambia il codice che segue:
@@ -61,6 +62,33 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
 - **Validare alla costruzione, ovunque.** Cinque difetti del Piano 1 erano tutti della stessa
   classe: validazione mancante → risposta sbagliata **in silenzio**. Un input invalido lancia
   con un messaggio che **nomina la correzione**; un percorso caldo non lancia mai.
+
+  > **Precisato in esecuzione (2026-07-28), dopo il Task 8.** «Un percorso caldo non lancia
+  > mai» significa: **niente validazione degli input a ogni frame**. Non significa che un
+  > metodo caldo non possa lanciare *mai in assoluto*. Un plugin non configurato, o una
+  > Scene senza camera principale, non sono condizioni di frame — sono errori di setup, o
+  > sempre veri o sempre falsi per tutta la vita della Scene, e costano un controllo che non
+  > si paga per entità. `pick()` e `cull()` quindi **lanciano** in quel caso, come `place()`
+  > e `follow()`. La ragione è la stessa che ha prodotto il vincolo sopra: restituire un
+  > rettangolo vuoto in silenzio darebbe all'utente «non si vede niente» senza dire perché,
+  > cioè esattamente la classe di guasto che il Piano 1 ha pagato caro per eliminare. Il
+  > JSDoc che promette il contrario va corretto, non il codice.
+- **Validare PRIMA di mutare.** Un metodo che può lanciare non lascia mai dietro di sé uno
+  stato mutato a metà: si calcola e si valida tutto in locali, e si scrive sui campi o sul
+  target solo quando ogni pezzo è riuscito. **Questa regola vince sui blocchi di codice dei
+  task**: dove un task mostra l'ordine opposto, l'implementer riordina, e non è una
+  deviazione dal piano ma la sua applicazione.
+
+  > **Aggiunta in esecuzione (2026-07-28), dopo il Task 4.** La stessa classe di difetto è
+  > emersa due volte in due task, entrambe le volte trascritta alla lettera da un blocco di
+  > codice di questo piano: `configure()` assegnava la proiezione prima di validare
+  > l'assegnatore di depth, e `place()` scriveva `target.x`/`target.y` prima di chiamare
+  > `keyFor()`, che è l'unico punto in cui `gx`/`gy`/`band`/`sub` vengono validati. In
+  > entrambi i casi il riordino **non costa niente** — il calcolo che valida veniva fatto
+  > comunque — e in entrambi i casi il guasto è lo stesso: chi cattura l'eccezione per
+  > saltare un'entità e proseguire il frame si ritrova un oggetto spostato con depth
+  > stantia. Due occorrenze sono un pattern, non una coincidenza: da qui in avanti è un
+  > vincolo, così i task rimanenti non lo ripetono una terza volta.
 - **pnpm 11 nega gli script di install per default**: serve `allowBuilds` in
   `pnpm-workspace.yaml` (il monorepo ce l'ha già per `esbuild`; `examples/` lo erediterà).
 
@@ -69,12 +97,30 @@ Vincolano **ogni** task. I requisiti di ogni task li includono implicitamente.
 - **Il guscio non contiene matematica.** Nessuna formula di proiezione, di depth, di culling
   o di bounds viene riscritta in `packages/plugin`. Se serve un calcolo, si chiama il core; se
   il core non ce l'ha, si aggiunge al core con il suo test in `node`. Un test architetturale
-  lo verifica (Task 10).
+  lo verifica (Task 10): `packages/plugin/test/architecture-no-maths.test.ts`, basato
+  sull'AST, fallisce se un file di `packages/plugin/src/` contiene un operatore binario `*`
+  o `/` fuori da una allowlist di due voci — `camera.ts` (`viewOf`, l'unica eccezione
+  sancita) e `hit-area.ts` (conversione pixel → origine normalizzata). Somma e sottrazione
+  non sono segnale: troppo comuni negli offset. **Quel test non esisteva** ed e' stato
+  aggiunto in esecuzione, dopo che l'implementer del Task 10 ha segnalato che il piano lo
+  prometteva senza specificarlo; alla prima esecuzione ha subito colto una violazione vera
+  (`p.a * 2` in `plugin.ts`, spostata nel core come `tileSizeOf`).
 - **Zero import di Phaser in `packages/core`.** La guardia del Piano 1
   (`packages/core/test/purity.test.ts`, basata sull'AST) resta verde: se un task la fa
   fallire, il task è sbagliato, non la guardia.
-- **Il codice spedito parla inglese**: messaggi d'errore e JSDoc esportato in inglese. I
-  commenti interni restano in italiano, come nel core.
+- **Ogni simbolo esportato parla inglese**: messaggi d'errore e JSDoc su qualunque `export`,
+  **inclusi gli helper di test**. I commenti *interni* — quelli che non stanno su un export —
+  restano in italiano, come nel core.
+
+  > **Precisazione decisa in esecuzione (2026-07-28), dopo il Task 1.** La formulazione
+  > originale diceva «il codice spedito parla inglese», e il reviewer del Task 1 ha
+  > giustamente chiesto se `test/helper.ts` sia «spedito». La risposta è che il criterio non
+  > è la spedizione ma l'esportazione: un `export` è una superficie che qualcuno legge da
+  > fuori, e non ha senso che `bootGame` si spieghi in una lingua diversa da `place()`.
+  > **Questa regola vince sui blocchi di codice dei task**: dove un task mostra JSDoc
+  > italiano su un simbolo esportato — succede nel Task 1 e può succedere altrove —
+  > l'implementer lo traduce in inglese invece di trascriverlo, e non è una deviazione dal
+  > piano ma la sua applicazione.
 - **Peer `phaser: "^4.0.0"`.** Vietato usare `Phaser.GameObjects.Layer` e i RenderNode custom
   (superficie cambiata dentro la linea v4 → richiederebbero `^4.2.0`). Se un task ne ha
   bisogno, si ferma e lo segnala: il floor è una promessa pubblica, non un dettaglio.
@@ -207,8 +253,10 @@ finché non passa, il plugin non va documentato come funzionante né pubblicato.
 ### Task 1: Il pacchetto plugin e l'anello jsdom
 
 Il task più rischioso del piano, quindi va per primo. Se questo non regge, niente altro
-regge. **È già stato provato che regge** (`scratchpad/jsdom-probe/`), quindi il compito qui
-è trascrivere una soluzione nota, non inventarne una.
+regge. **È già stato provato che regge**: la prova è stata costruita e fatta girare in una
+directory di scratch fuori dal repo, e il suo esito è riportato per esteso in
+`docs/recon/MISURATO-runtime.md`. Quindi il compito qui è trascrivere una soluzione nota —
+tutto il codice necessario è in questo task — non inventarne una.
 
 **Files:**
 - Create: `packages/plugin/package.json`
@@ -929,7 +977,7 @@ export function isoScenePlugin(opts: IsoScenePluginOptions = {}): Phaser.Types.C
 - [ ] **Step 5: Eseguire i test e vederli passare**
 
 Run: `npx vitest run packages/plugin/test/install.test.ts`
-Expected: PASS, 12 test.
+Expected: PASS, 13 test.
 
 Run: `pnpm typecheck`
 Expected: exit 0.
@@ -947,7 +995,9 @@ git commit -m "Piano 2 Task 2: IsoPlugin, mapping obbligatorio, withDefaults"
 ```
 
 **Definition of Done:**
-- 12 test verdi in `install.test.ts`; totale della suite **117**.
+- 15 test verdi in `install.test.ts`; totale della suite **120**. (13 dal blocco di codice
+  qui sotto, piu' 2 aggiunti in review: `configure()` dev'essere atomico, e la prova serve
+  in due forme distinte — plugin fresco e ri-configurazione fallita.)
 - `pnpm typecheck` esce 0.
 - Nessuna formula matematica in `plugin.ts`: proiezione e depth vengono dal core.
 - Il warning del `mapping` mancante nomina `mapping` **e** dice che `systemKey`/`sceneKey`
@@ -1203,7 +1253,7 @@ Run: `npx vitest run packages/plugin/test/lifecycle.test.ts`
 Expected: PASS, 6 test.
 
 Run: `npx vitest run`
-Expected: PASS, **123** test.
+Expected: PASS, **126** test.
 
 Run: `pnpm typecheck`
 Expected: exit 0.
@@ -1231,7 +1281,7 @@ git commit -m "Piano 2 Task 3: ciclo di vita cablato a mano, perche' Phaser non 
 ```
 
 **Definition of Done:**
-- 6 test verdi in `lifecycle.test.ts`; totale della suite **123**.
+- 6 test verdi in `lifecycle.test.ts`; totale della suite **126**.
 - Le cinque mutazioni sono state provate e **ognuna** ha fatto fallire il test atteso.
 - `pnpm typecheck` esce 0.
 - `destroy()` chiama `super.destroy()` **per ultimo**.
@@ -1469,7 +1519,8 @@ git commit -m "Piano 2 Task 4: place(), un solo percorso per posizione e depth"
 ```
 
 **Definition of Done:**
-- 8 test verdi; totale **131**.
+- 11 test verdi; totale **137**. (8 dal blocco di codice qui sotto, piu' 3 aggiunti in
+  review: `place()` deve validare prima di mutare, e la prova serve su `gx`, `band` e `sub`.)
 - Le quattro mutazioni provate, con l'esito della #2 annotato nel report.
 - `place()` non contiene aritmetica: proiezione e chiave vengono dal core.
 
@@ -1826,7 +1877,8 @@ git commit -m "Piano 2 Task 5: IsoSprite e la factory, con elevation al posto di
 ```
 
 **Definition of Done:**
-- 9 test verdi; totale **140**.
+- 11 test verdi; totale **148**. (9 dal blocco di codice qui sotto, piu' 2 aggiunti in
+  review: `setCell()` e la factory devono validare prima di mutare.)
 - La factory aggiunge **solo** al display list.
 - Nessun campo di `IsoSprite` collide con un accessor di Phaser (`x`, `y`, `depth`, `scale`,
   `angle`, `rotation`).
@@ -2190,7 +2242,8 @@ git commit -m "Piano 2 Task 6: camera isometrica, con roundPixels difeso"
 ```
 
 **Definition of Done:**
-- 10 test verdi; totale **150**.
+- 12 test verdi; totale **160**. (10 dal blocco di codice qui sotto, piu' 2 aggiunti in
+  review: `view()` non aveva **nessun** test, e `follow()` non validava gli input.)
 - `viewOf` è pura e non importa Phaser.
 - `follow()` non modifica mai `roundPixels`, in nessuna direzione.
 - Le cinque mutazioni provate.
@@ -2218,6 +2271,25 @@ Quattro fatti verificati che scrivono questo task:
 4. **`setInteractive` non è idempotente**: una seconda chiamata si limita a ri-abilitare, e
    **non** sostituisce la hit area. Per aggiornarla bisogna mutare `input.hitArea` sul posto
    o chiamare prima `removeInteractive()`.
+
+   > **Corretto in esecuzione (2026-07-28), dopo il Task 7. Delle due strade, una è
+   > rotta.** Il codice di questo task sceglieva `removeInteractive()` seguito da
+   > `setInteractive()`. Il reviewer l'ha **provato empiricamente** con un test usa-e-getta
+   > e ha tracciato la causa nel sorgente di Phaser: `clear()`, che `removeInteractive`
+   > chiama, accoda l'oggetto a `_pendingRemoval` ma **non** lo toglie da `_list`
+   > (`InputPlugin.js:809-845`); il `setInteractive` immediatamente successivo vede
+   > l'oggetto ancora in `_list` e quindi **non** lo ri-accoda per l'inserimento
+   > (`InputPlugin.js:2220`). Al `preUpdate` seguente Phaser lo trova in entrambe le code,
+   > lo splicia e richiama `clear()` — stavolta sul `io` **nuovo**, appena installato —
+   > azzerando `target.input`. Esito: un game step dopo qualunque ri-chiamata, l'oggetto
+   > non è più interattivo **per niente**, non solo con una hit area stantia.
+   >
+   > **Vale quindi la mutazione sul posto**: se `target.input` esiste già si sostituiscono
+   > `hitArea` e `hitAreaCallback` direttamente, e `setInteractive` si chiama solo la prima
+   > volta. La lezione secondaria è sul test, non sul codice: quello prescritto qui
+   > **non faceva passare un frame vero** fra le due chiamate, quindi osservava l'istante
+   > in cui il vecchio `io` non è ancora stato distrutto e passava a vuoto. Un test sul
+   > ciclo di vita dell'input che non avanza il frame non sta verificando niente.
 
 **Files:**
 - Create: `packages/core/src/hit-area.ts`
@@ -2547,7 +2619,8 @@ git commit -m "Piano 2 Task 7: rombo puro nel core, cablaggio nel guscio"
 ```
 
 **Definition of Done:**
-- 10 test nuovi; totale **164**.
+- 12 test nuovi; totale **172**. (6 nel core in `node`, 6 nel guscio in `jsdom`; due dei
+  sei del core aggiunti in review, per i rami di validazione scoperti.)
 - `packages/core/test/purity.test.ts` resta verde: `hit-area.ts` non importa Phaser.
 - L'assert di uguaglianza sulla superficie del core è aggiornato.
 - Il report dichiara esplicitamente che il click **non** è verificato.
@@ -2723,7 +2796,7 @@ Run: `npx vitest run` → **172** test. `pnpm typecheck` → 0.
 git commit -m "Piano 2 Task 8: pick() e cull() sulla scena"
 ```
 
-**Definition of Done:** 8 test nuovi, totale **172**; le tre mutazioni provate; `cull()` non
+**Definition of Done:** 9 test nuovi, totale **181**; le tre mutazioni provate; `cull()` non
 legge mai `worldView`.
 
 ---
@@ -2813,7 +2886,7 @@ Run: `npx vitest run` → **179** test.
 git commit -m "Piano 2 Task 9: snapshot(), piano e serializzabile"
 ```
 
-**Definition of Done:** 7 test nuovi, totale **179**; il round-trip JSON passa; `snapshot()`
+**Definition of Done:** 7 test nuovi, totale **188**; il round-trip JSON passa; `snapshot()`
 non lancia in nessuno stato, nemmeno dopo `destroy()`.
 
 ---
@@ -3029,7 +3102,9 @@ git commit -m "Piano 2 Task 10: superficie pubblica, declare global, progetto co
 ```
 
 **Definition of Done:**
-- 1 test nuovo (l'assert di uguaglianza); totale **180**.
+- 6 test nuovi; totale **194**. (1 dal blocco qui sotto — l'assert di uguaglianza — piu' 5
+  aggiunti in review: 3 nel core per `tileSizeOf`, spostato li' dal guscio, e 2 per la
+  **guardia architetturale** che questo task doveva contenere fin dall'inizio.)
 - `pnpm typecheck` copre core, plugin **e** consumer, ed esce 0.
 - La mutazione `declare module` è stata provata e **fa fallire** il typecheck del consumer.
 
@@ -3101,6 +3176,19 @@ Le quattro prove, tutte programmatiche:
    prevede due casi legittimi — un oggetto reso interattivo nel frame corrente, e un frame
    in cui la camera si è mossa (l'input usa la matrice del frame precedente). Se emerge una
    terza classe di divergenza, è un difetto nostro.
+
+   > **La terza classe è emersa davvero, e il gate ha fatto il suo lavoro (2026-07-28).**
+   > `picking.ts` arrotondava con `Math.round` su entrambi gli assi, dando a una cella
+   > `gy ∈ [n−0.5, n+0.5)`; la regola pnpoly semiaperta di `Polygon.Contains` dà al rombo
+   > `gy ∈ (n−0.5, n+0.5]` — **invertito sul solo asse `gy`**. Non era ambiguità: verificato
+   > su 640.000 punti, la tassellatura non ha un solo punto conteso né orfano, quindi la
+   > risposta del click è unica e `pick()` ne nominava semplicemente un'altra. **5.471 pixel
+   > della canvas — lo 0,79%, circa un click su 127** — divergevano in modo deterministico.
+   > Il primo tentativo l'aveva classificata come difetto del test ed esclusa dal campione;
+   > **la classificazione era sbagliata e l'esclusione era la mossa vietata.** Deciso:
+   > allineare `pick()` al click con una parità half-down su `gy`. La lezione che resta è
+   > che questo punto 4 è l'unica verifica del piano capace di scoprire una divergenza fra
+   > due API che rispondono alla stessa domanda — e l'ha scoperta.
 
 **Definition of Done:**
 - `pnpm e2e` verde in headless.
@@ -3182,10 +3270,30 @@ soddisfa strutturalmente. `DiamondTarget` (Task 7) nomina i sei membri che
 `applyDiamondHitArea` usa. `HeightSource` viene dal core e non è ridefinito. `elevation`,
 non `z`, in tutti i task dal 5 in poi.
 
-**Conteggio dei test**, cumulativo: 105 → 117 → 123 → 131 → 140 → 150 → 164 → 172 → 179 →
-180. Un implementer che trova un numero diverso **si fermi e lo segnali** invece di
-aggiustare il conteggio: nel Piano 1 un conteggio sbagliato nel piano fu segnalato da un
-implementer che si rifiutò di inventare un test, ed era la risposta giusta.
+**Conteggio dei test.** Un implementer che trova un numero diverso da quello previsto dal
+suo task **si fermi e lo segnali** invece di aggiustare il conteggio: nel Piano 1 un
+conteggio sbagliato nel piano fu segnalato da un implementer che si rifiutò di inventare un
+test, ed era la risposta giusta. **Il numero misurato vince sempre su quello scritto**, e uno
+scarto va segnalato, non assorbito.
+
+> **La catena assoluta è stata rimossa in esecuzione (2026-07-28), dopo la review finale.**
+> Qui c'era una serie cumulativa task per task. È stata sbagliata **tre volte su tre**: una
+> volta all'origine (la prosa del Task 2 diceva 12 `it()` dove il suo blocco di codice ne
+> aveva 13), una volta al Task 7 (la catena implicava 14 test nuovi dove la Definition of
+> Done ne dichiarava 10), e infine è rimasta ferma a 194 mentre i due fix round del Task 12
+> portavano il repo a 200 — cioè è finita per essere *stantia proprio nel paragrafo che
+> insegna a non fidarsi dei numeri scritti*. La regola sopra è ciò che ha funzionato davvero:
+> ha fatto fermare quattro implementer diversi, ogni volta a ragione. L'aritmetica no. Ogni
+> task dichiara quanti test aggiunge; il totale lo dice `npx vitest run`, non questo
+> documento.
+
+> **Corretto in esecuzione (2026-07-28), dopo il Task 2.** La serie originale partiva da 117
+> e la catena era sbagliata di uno da lì in poi: il blocco di codice del Task 2 contiene
+> **13** `it()`, mentre la prosa dello stesso task ne dichiarava 12. L'implementer del Task 2
+> ha misurato 118, si è fermato e l'ha segnalato invece di cancellare un test per far
+> tornare il numero — esattamente il comportamento che questo paragrafo chiede. Il conteggio
+> autorevole è quello sopra; **il numero misurato vince comunque sul numero scritto**, e uno
+> scarto va segnalato, non assorbito.
 
 ---
 

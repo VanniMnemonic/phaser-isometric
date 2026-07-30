@@ -10,7 +10,9 @@ const SUPERFICIE_ATTESA = [
     'createHeightGrid',
     'createProjection',
     'cullBounds',
+    'diamondPoints',
     'pick',
+    'tileSizeOf',
     'worldBounds'
 ].sort();
 
@@ -23,7 +25,7 @@ describe('superficie pubblica del core', () => {
     });
 
     it('le funzioni portanti sono davvero funzioni', () => {
-        for (const nome of ['createProjection', 'createDepthAssigner', 'createHeightGrid', 'pick', 'cullBounds', 'worldBounds', 'contentBounds'] as const) {
+        for (const nome of ['createProjection', 'createDepthAssigner', 'createHeightGrid', 'pick', 'cullBounds', 'worldBounds', 'contentBounds', 'tileSizeOf'] as const) {
             expect(typeof (api as Record<string, unknown>)[nome], nome).toBe('function');
         }
     });
