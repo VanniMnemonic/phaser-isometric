@@ -1,0 +1,7 @@
+{
+  "_purpose": "The single source for the background colour both browser gates measure against. Duplicating this box was a real finding: two gates asking 'did the package draw anything?' must ask it in the same units, and a colour changed in one example and not the other silently turns one of them into a different question. Read by scripts/verify-tarball.mjs (the tarball gate, against examples/quickstart) and examples/e2e/from-docs.spec.ts (the documentation gate, against examples/from-docs). Both gates also assert that their scene's source actually declares `hex` — a shared constant nobody checks against the source is just a third place to be wrong.",
+  "hex": "#11141a",
+  "rgb": [17, 20, 26],
+  "_box": "Upper bounds, per channel, generously above rgb above: a pixel at or below all three is background, anything else is something the scene drew on top. The margin absorbs PNG compression and antialiasing at the tile edges.",
+  "box": { "rMax": 40, "gMax": 45, "bMax": 55 }
+}
