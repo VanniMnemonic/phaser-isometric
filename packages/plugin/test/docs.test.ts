@@ -9,6 +9,11 @@ const SKILL = readFileSync(
     'utf8'
 );
 
+const LLMS = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../llms.txt'),
+    'utf8'
+);
+
 describe('SKILL.md', () => {
     it('ha il frontmatter nel formato delle skill di Phaser', () => {
         expect(SKILL.startsWith('---\n')).toBe(true);
@@ -87,5 +92,39 @@ describe('non-divergenza della documentazione', () => {
         // torna a essere prosa che invecchia.
         expect(SKILL).toContain(sorgente);
         expect(sorgente.length).toBeGreaterThan(400);
+    });
+});
+
+describe('llms.txt porta il significato, non solo la struttura', () => {
+    it('pinna le frasi che un filtro strutturale perderebbe in silenzio', () => {
+        // Un filtro che tiene fence/tabelle/liste e butta la prosa perde
+        // proprio i punti dove il significato vive SOLO nella prosa: un
+        // limite dichiarato, il razionale di una scelta, il perche' un
+        // percorso caldo non valida. Ogni frase qui e' presa verbatim da
+        // una di quelle sezioni, abbastanza specifica da non comparire per
+        // caso e abbastanza corta da non rompersi a ogni riformulazione.
+        for (const frase of [
+            // Culling: non e' un'ottimizzazione sopra qualcosa che esiste
+            // gia', e iso.view() non e' camera.worldView.
+            'no per-sprite culling',
+            'is not an optimisation layered on an existing one',
+            'is not `camera.worldView`',
+            // Picking: il limite alle sole facce superiori.
+            'top faces only',
+            // Projection: le due funzioni di Phaser si contraddicono, e
+            // l'origine deve avere componenti intere.
+            'Phaser contradicts itself',
+            'must have integer components',
+            // Depth: il razionale del tie-break, e rowOffset per le
+            // coordinate negative.
+            'display-list comparator is exactly',
+            'raise `rowOffset` so',
+            // Errors: perche' i percorsi caldi non validano.
+            'Hot paths never throw on per-frame input',
+            // La clausola sul culling che deve viaggiare col numero.
+            '"500 active" is not "500 drawn on screen"'
+        ]) {
+            expect(LLMS, frase).toContain(frase);
+        }
     });
 });

@@ -31,58 +31,51 @@ function inject(text, where) {
 }
 
 /**
- * Derives llms.txt from SKILL.md: frontmatter dropped, headings and fenced
- * code kept, prose paragraphs dropped by default. What survives is the shape
- * an agent needs when it has the package but has not indexed the skill.
+ * Derives llms.txt from SKILL.md: frontmatter dropped, everything else kept
+ * by default - headings, prose, lists, tables, bold lines, blockquotes. An
+ * agent that has the package but has not indexed the skill needs the meaning,
+ * and meaning lives in prose at least as often as in a fence or a table; a
+ * filter that strips prose to save lines strips traps, caveats and rationale
+ * along with it, silently.
  *
- * One refinement on top of that plain rule: a heading whose entire body is
- * ordinary prose - no fence, no list, no table, no bold line - is not
- * shortened, it is emptied. A subsection that keeps its title but loses every
- * word under it is worse than one that was never split out, because the
- * title still promises content. So prose survives, but only inside a
- * heading's body that would otherwise come out completely empty; a body that
- * already kept a fence or a table drops its prose exactly as before.
+ * The only compression is on length, and it targets exactly the place the
+ * length is concentrated: long fenced code blocks. One declared, mechanical
+ * rule - not a per-block judgment call - drives it: a fenced block strictly
+ * longer than FENCE_MAX lines (open and close fence included) is replaced by
+ * a one-line pointer naming its heading, UNLESS that heading is the Quick
+ * Start, which stays in full because it is the single most useful block in
+ * the file. Every other fence, short or long, is kept verbatim; so is every
+ * word outside a fence.
  */
 function llmsTxt(skill) {
     const senzaFrontmatter = skill.replace(/^---\n[\s\S]*?\n---\n/, '');
     const righe = senzaFrontmatter.split('\n');
 
-    // Split into heading-delimited blocks first, fence-aware: a line that
-    // merely starts with '#' inside a fenced code block (a shell comment,
-    // say) is not a heading and must not fracture the block in two.
-    const blocchi = [];
-    let blocco = { heading: null, corpo: [] };
-    let inFenceSplit = false;
-    for (const riga of righe) {
-        if (riga.startsWith('```')) inFenceSplit = !inFenceSplit;
-        if (!inFenceSplit && riga.startsWith('#')) {
-            blocchi.push(blocco);
-            blocco = { heading: riga, corpo: [] };
-            continue;
-        }
-        blocco.corpo.push(riga);
-    }
-    blocchi.push(blocco);
-
-    /** The plain structural filter, applied within one block's body only. */
-    function struttura(corpo) {
-        const out = [];
-        let inFence = false;
-        for (const riga of corpo) {
-            if (riga.startsWith('```')) { inFence = !inFence; out.push(riga); continue; }
-            if (inFence) { out.push(riga); continue; }
-            if (/^\s*[-*]\s|^\s*\d+\.\s|^\|/.test(riga)) { out.push(riga); continue; }
-            if (riga.startsWith('**') || riga.startsWith('>')) { out.push(riga); continue; }
-        }
-        return out;
-    }
+    const FENCE_MAX = 12;
+    const QUICKSTART_HEADING = '## Quick Start';
 
     const out = [];
-    for (const { heading, corpo } of blocchi) {
-        if (heading !== null) out.push('', heading);
-        const filtrato = struttura(corpo);
-        const rimastoQualcosa = filtrato.some((riga) => riga.trim() !== '');
-        out.push(...(rimastoQualcosa ? filtrato : corpo));
+    let headingCorrente = '';
+    let inFence = false;
+    let bufferFence = [];
+
+    for (const riga of righe) {
+        if (riga.startsWith('```')) {
+            if (!inFence) { inFence = true; bufferFence = [riga]; continue; }
+            inFence = false;
+            bufferFence.push(riga);
+            const troppoLungo = bufferFence.length > FENCE_MAX;
+            if (troppoLungo && headingCorrente !== QUICKSTART_HEADING) {
+                const titolo = headingCorrente.replace(/^#+\s*/, '');
+                out.push(`_Full example under "${titolo}" in skills/phaser-isometric/SKILL.md._`);
+            } else {
+                out.push(...bufferFence);
+            }
+            continue;
+        }
+        if (inFence) { bufferFence.push(riga); continue; }
+        if (riga.startsWith('#')) headingCorrente = riga;
+        out.push(riga);
     }
 
     return `# phaser-isometric\n${out.join('\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;

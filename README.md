@@ -119,12 +119,14 @@ new Phaser.Game({
 
 ## For agents
 
-The package ships its own agent-facing documentation at
-[`skills/phaser-isometric/SKILL.md`](packages/plugin/skills/phaser-isometric/SKILL.md),
-in the same format as the skills Phaser 4 itself ships inside its npm package. An
+The package ships its own agent-facing documentation at `skills/phaser-isometric/SKILL.md`
+— that path is relative to the installed package root, i.e.
+`node_modules/phaser-isometric/skills/phaser-isometric/SKILL.md` after `npm install` —
+in the same format as the skills Phaser 4 itself ships inside its own npm package. An
 agent that has indexed `node_modules/phaser/skills/` finds this one at the same
 place, in the same shape — read it before writing isometric code against this
-plugin.
+plugin. Browsable on GitHub at
+https://github.com/VanniMnemonic/phaser-isometric/blob/main/packages/plugin/skills/phaser-isometric/SKILL.md.
 
 ## Performance
 
