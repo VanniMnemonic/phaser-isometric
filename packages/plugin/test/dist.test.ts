@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it, beforeAll } from 'vitest';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const DIST = resolve(dirname(fileURLToPath(import.meta.url)), '../dist');
+const PLUGIN_ROOT = resolve(DIST, '..');
+const REPO_ROOT = resolve(DIST, '../../..');
+const TSC_BIN = join(REPO_ROOT, 'node_modules/.bin/tsc');
 
 /**
  * Riconosce un import ESM di "phaser", esterno o interno che sia. NON ancorato
@@ -123,6 +127,100 @@ describe('tipi pubblicati', () => {
     it('non lascia specifier interni nei tipi', () => {
         for (const f of allDts(T)) {
             expect(readFileSync(f, 'utf8'), `${f}`).not.toContain('@iso-internal/core');
+        }
+    });
+});
+
+/**
+ * Il test precedente ("porta con se l augmentation globale") fa un
+ * `toContain('phaser-augment.d.ts')`: verifica che la sottostringa compaia da
+ * qualche parte nel file, non che compaia come direttiva triple-slash IN
+ * CIMA. TypeScript onora `/// <reference path=... />` SOLO se precede
+ * qualunque altra istruzione — una riga identica spostata in fondo al file,
+ * dopo gli `export`, e' testo morto: la sottostringa c'e' ancora (quel test
+ * resterebbe verde), ma il compilatore di un consumatore non la processa piu'
+ * e l'augmentation smette di raggiungerlo. Da qui i due test sotto: uno
+ * strutturale e veloce che pinna la POSIZIONE esatta, uno funzionale che
+ * pinna l'EFFETTO compilando una sonda vera.
+ */
+describe('la direttiva del reference funziona, non solo compare', () => {
+    const T = join(DIST, 'types');
+
+    it('la riga di reference e la prima riga esatta di index.d.ts', () => {
+        const index = readFileSync(join(T, 'plugin/index.d.ts'), 'utf8');
+        const firstLine = index.split('\n')[0];
+        expect(firstLine).toBe('/// <reference path="./phaser-augment.d.ts" />');
+    });
+
+    it('un consumatore vero compila this.iso e this.add.isoSprite senza errori', () => {
+        // Sonda TypeScript reale, in una cartella temporanea sotto
+        // packages/plugin (cosi' la risoluzione dei moduli, che risale
+        // l'albero delle directory, trova "phaser" nello stesso node_modules
+        // che vedrebbe un consumatore vero — non serve mappare anche quello).
+        // "phaser-isometric" e' invece mappato a mano sui .d.ts EMESSI: e'
+        // quello il pacchetto che vogliamo verificare, non i sorgenti.
+        const probeDir = mkdtempSync(join(PLUGIN_ROOT, '.typecheck-probe-'));
+        try {
+            const packageEntry = relative(probeDir, join(T, 'plugin/index')).replace(/\\/g, '/');
+
+            writeFileSync(
+                join(probeDir, 'tsconfig.json'),
+                JSON.stringify(
+                    {
+                        compilerOptions: {
+                            target: 'ES2020',
+                            module: 'ESNext',
+                            moduleResolution: 'bundler',
+                            strict: true,
+                            noEmit: true,
+                            // I tipi di Phaser non superano da soli uno
+                            // skipLibCheck: false, ne' in 4.0.0 ne' in 4.2.1:
+                            // qui vogliamo verificare LA NOSTRA augmentation,
+                            // non fare da linter ai tipi di una dipendenza.
+                            skipLibCheck: true,
+                            baseUrl: '.',
+                            paths: { 'phaser-isometric': [packageEntry] }
+                        },
+                        include: ['probe.ts']
+                    },
+                    null,
+                    2
+                )
+            );
+
+            // Esercita ENTRAMBE le meta' dell'augmentation: sono due
+            // dichiarazioni distinte (Phaser.Scene.iso e
+            // Phaser.GameObjects.GameObjectFactory.isoSprite) e una puo'
+            // rompersi senza l'altra.
+            writeFileSync(
+                join(probeDir, 'probe.ts'),
+                [
+                    "import Phaser from 'phaser';",
+                    "import type { IsoPlugin, IsoSprite } from 'phaser-isometric';",
+                    '',
+                    'class ProbeScene extends Phaser.Scene {',
+                    '    checkScenePlugin(): IsoPlugin {',
+                    '        return this.iso;',
+                    '    }',
+                    '',
+                    '    checkFactory(): IsoSprite {',
+                    "        return this.add.isoSprite(0, 0, 'tex');",
+                    '    }',
+                    '}',
+                    '',
+                    'void ProbeScene;',
+                    ''
+                ].join('\n')
+            );
+
+            const result = spawnSync(TSC_BIN, ['--noEmit', '-p', probeDir], {
+                cwd: PLUGIN_ROOT,
+                encoding: 'utf8'
+            });
+
+            expect(result.status, `tsc contro la sonda:\n${result.stdout}${result.stderr}`).toBe(0);
+        } finally {
+            rmSync(probeDir, { recursive: true, force: true });
         }
     });
 });
