@@ -27,3 +27,7 @@ examples/e2e/test-results/
 # bench-baseline.json resta tracciato: e' la baseline CURATA, committata a
 # mano, contro cui bench.spec.ts confronta ogni run (vedi il commento lì).
 examples/e2e/artifacts/bench-results.json
+
+# packages/plugin/{README.md,LICENSE,llms.txt} sono GENERATI da scripts/build-docs.mjs
+# ma restano tracciati: pnpm pack li legge dal disco. `pnpm docs:check` impedisce
+# che divergano dalle loro sorgenti nella root.

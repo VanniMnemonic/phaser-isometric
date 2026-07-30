@@ -10,9 +10,11 @@
     "build:js": "pnpm --filter phaser-isometric exec vite build",
     "build:types": "node scripts/build-types.mjs",
     "build": "pnpm build:js && pnpm build:types",
+    "docs:build": "node scripts/build-docs.mjs",
+    "docs:check": "node scripts/build-docs.mjs --check",
     "e2e": "playwright test -c examples/e2e/playwright.config.ts",
     "e2e:ci": "playwright test -c examples/e2e/playwright.config.ts --grep-invert @bench",
-    "check": "pnpm build && pnpm test && pnpm typecheck && pnpm e2e"
+    "check": "pnpm build && pnpm test && pnpm typecheck && pnpm docs:check && pnpm e2e"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

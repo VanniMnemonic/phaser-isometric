@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SKILL = readFileSync(
@@ -65,5 +66,26 @@ describe('SKILL.md', () => {
         for (const parola of [' perche', ' quindi ', ' invece ', ' cioe', ' senza il quale ']) {
             expect(SKILL.toLowerCase(), parola).not.toContain(parola);
         }
+    });
+});
+
+describe('non-divergenza della documentazione', () => {
+    it('rigenerare non produce alcun diff', () => {
+        const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+        // Se questo fallisce, qualcuno ha modificato un artefatto generato a
+        // mano invece della sua sorgente: llms.txt, il README del pacchetto o
+        // il Quick Start dentro la SKILL.md.
+        expect(() => execFileSync('node', ['scripts/build-docs.mjs', '--check'], { cwd: root }))
+            .not.toThrow();
+    });
+
+    it('il Quick Start dentro la SKILL.md e quello che il progetto compila', () => {
+        const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+        const sorgente = readFileSync(join(root, 'examples/quickstart/src/main.ts'), 'utf8').trimEnd();
+        // Non basta che il blocco esista: deve essere IL file, quello che
+        // `pnpm --filter quickstart build` compila. Altrimenti il Quick Start
+        // torna a essere prosa che invecchia.
+        expect(SKILL).toContain(sorgente);
+        expect(sorgente.length).toBeGreaterThan(400);
     });
 });
