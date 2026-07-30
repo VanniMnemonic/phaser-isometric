@@ -160,6 +160,20 @@ function notConfigured(what: string): IsoUsageError {
 }
 
 /**
+ * Risolve la quota di un bersaglio di follow()/aggiornaProxy(): `elevation`
+ * vince quando presente. `IsoSprite.setCell()` scrive `gx`/`gy`/`elevation`/
+ * `band`/`sub`, mai `z` — ma ogni GameObject eredita comunque uno `z` da
+ * `Phaser.GameObjects.Components.Transform`, inizializzato a 0 e che nulla in
+ * questo pacchetto tocca. Leggere `target.z ?? 0` soddisfa quindi il tipo
+ * strutturale anche per un IsoSprite, e insegue per sempre a quota zero senza
+ * errore. Un'unica funzione, usata da entrambi i call-site, e' cio' che
+ * impedisce che i due punti di lettura divergano.
+ */
+function quotaDi(target: { z?: number; elevation?: number }): number {
+    return target.elevation ?? target.z ?? 0;
+}
+
+/**
  * What `place()` needs from its target: a position and a depth setter.
  *
  * Deliberately structural rather than `Phaser.GameObjects.GameObject`. Not
@@ -197,7 +211,7 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     // quando nessuno e' inseguito: e' anche la guardia che ferma
     // `aggiornaProxy` senza bisogno di staccare/riattaccare il listener a ogni
     // follow()/stopFollow().
-    private inseguito: { gx: number; gy: number; z?: number } | null = null;
+    private inseguito: { gx: number; gy: number; z?: number; elevation?: number } | null = null;
 
     // Mutato SUL POSTO a ogni PRE_UPDATE: e' l'oggetto che `Camera.startFollow`
     // trattiene come `_follow`. Riassegnarlo (invece di scrivere .x/.y) romperebbe
@@ -385,13 +399,22 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
      * then works unmodified, in screen space, which is the space the player
      * actually sees.
      *
+     * Accepts both `elevation` and `z`; `elevation` wins when both are present.
+     * `IsoSprite` names its own elevation `elevation`, not `z`, to avoid
+     * colliding with the `z` that `Phaser.GameObjects.Components.Transform`
+     * already owns (and initializes to 0, untouched by this package) — so
+     * without this precedence, `follow(isoSprite)` would still compile (the
+     * structural type is satisfied by Transform's own `z`) and would silently
+     * follow at elevation 0 forever, no matter what `setCell()` actually placed
+     * the sprite at.
+     *
      * `roundPixels` is read before the call and passed back in. Phaser's
      * `startFollow(target)` sets it to `false` unconditionally and `stopFollow`
      * never restores it, which silently disables pixel rounding for a pixel-art
      * game the first time it follows anything.
      */
     follow(
-        target: { gx: number; gy: number; z?: number },
+        target: { gx: number; gy: number; z?: number; elevation?: number },
         opts: { lerp?: number; offsetX?: number; offsetY?: number } = {}
     ): this {
         const camera = this.systems?.cameras?.main;
@@ -407,14 +430,18 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // qualunque stato. Una follow() rifiutata non deve lasciare
         // `inseguito` assegnato ne' il proxy proiettato a meta'.
         const proiezione = this.projection;
+        const quota = quotaDi(target);
         requireFiniteInput(target.gx, 'gx', 'follow()');
         requireFiniteInput(target.gy, 'gy', 'follow()');
-        requireFiniteInput(target.z ?? 0, 'z', 'follow()');
+        // Il nome riportato e' quello che il chiamante ha davvero passato: se
+        // ha scritto `elevation`, dire `z` lo manderebbe a cercare il campo
+        // sbagliato.
+        requireFiniteInput(quota, target.elevation !== undefined ? 'elevation' : 'z', 'follow()');
         requireFiniteInput(opts.lerp ?? 1, 'lerp', 'follow()');
         const roundPixels = camera.roundPixels;
 
         this.inseguito = target;
-        proiezione.projectInto(this.proxy, target.gx, target.gy, target.z ?? 0);
+        proiezione.projectInto(this.proxy, target.gx, target.gy, quota);
 
         // Leggi PRIMA, passa DOPO: e' l'unico modo di non perdere la scelta
         // dell'utente. Nota che lerp e offset sono specchiati sui due assi da
@@ -622,7 +649,9 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         if (!this.inseguito) return;
         const t = this.inseguito;
         // SUL POSTO. La camera trattiene il riferimento a questo oggetto.
-        this.projection.projectInto(this.proxy, t.gx, t.gy, t.z ?? 0);
+        // `quotaDi`, non `t.z ?? 0`: e' la stessa risoluzione di follow(), cosi'
+        // la camera non parte alla quota giusta per poi derivare a ogni frame.
+        this.projection.projectInto(this.proxy, t.gx, t.gy, quotaDi(t));
     }
 
     override boot(): void {

@@ -13,6 +13,7 @@ class Level extends Phaser.Scene {
         // `null` for a cell with no ground at all.
         const heights = createHeightGrid(GRID, GRID, 0);
         heights.setHeight(6, 6, 2);
+        heights.setHeight(20, 20, null);
         this.iso.setHeights(heights);
 
         // Isometric world bounds are NOT the orthogonal ones: the world is

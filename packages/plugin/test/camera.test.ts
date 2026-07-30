@@ -82,6 +82,57 @@ describe('follow()', () => {
         expect(proxy.y).toBe(atteso.y);
     });
 
+    it('segue un IsoSprite alla sua quota (elevation), non a zero', async () => {
+        const scene = await conIso();
+        // `IsoSprite` non scrive mai `z`: setCell() scrive `elevation`. Se
+        // follow() leggesse ancora `target.z ?? 0`, questo test seguirebbe lo
+        // `z` di Transform (sempre 0, mai toccato da questo pacchetto) e
+        // passerebbe con la camera ferma a quota zero — proprio il difetto che
+        // la review ha scoperto. Nessun PRE_UPDATE qui apposta: questo isola
+        // la proiezione iniziale che follow() fa da se', dal ricalcolo per
+        // frame di aggiornaProxy(), che e' il test successivo.
+        const eroe = scene.add.isoSprite(3, 3, '__DEFAULT');
+        eroe.setCell(3, 3, 2, scene.iso.bands.hero);
+
+        scene.iso.follow(eroe);
+
+        const atteso = scene.iso.projection.project(3, 3, 2);
+        const proxy = (scene.cameras.main as unknown as { _follow: { x: number; y: number } })._follow;
+        expect(proxy.x).toBe(atteso.x);
+        expect(proxy.y).toBe(atteso.y);
+    });
+
+    it('un setCell che cambia quota sposta il proxy al frame successivo', async () => {
+        const scene = await conIso();
+        const eroe = scene.add.isoSprite(1, 1, '__DEFAULT');
+        eroe.setCell(1, 1, 0, scene.iso.bands.hero);
+        scene.iso.follow(eroe);
+
+        // Cambia SOLO la quota: e' esattamente cio' che aggiornaProxy() deve
+        // rileggere a ogni PRE_UPDATE, e che il primo test da solo (che
+        // proietta una volta sola, dopo un unico setCell) non esercita.
+        eroe.setCell(1, 1, 4, scene.iso.bands.hero);
+        scene.sys.events.emit(Phaser.Scenes.Events.PRE_UPDATE, 0, 16);
+
+        const atteso = scene.iso.projection.project(1, 1, 4);
+        const proxy = (scene.cameras.main as unknown as { _follow: { x: number; y: number } })._follow;
+        expect(proxy.x).toBe(atteso.x);
+        expect(proxy.y).toBe(atteso.y);
+    });
+
+    it('un oggetto semplice { gx, gy, z } senza elevation si comporta esattamente come prima', async () => {
+        const scene = await conIso();
+        const bersaglio = { gx: 4, gy: 1, z: 3 };
+
+        scene.iso.follow(bersaglio);
+        scene.sys.events.emit(Phaser.Scenes.Events.PRE_UPDATE, 0, 16);
+
+        const atteso = scene.iso.projection.project(4, 1, 3);
+        const proxy = (scene.cameras.main as unknown as { _follow: { x: number; y: number } })._follow;
+        expect(proxy.x).toBe(atteso.x);
+        expect(proxy.y).toBe(atteso.y);
+    });
+
     it('muta il proxy SUL POSTO: l identita non cambia mai', async () => {
         const scene = await conIso();
         const bersaglio = { gx: 0, gy: 0 };
