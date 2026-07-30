@@ -12,10 +12,9 @@ it will not move under you.
 
 Nothing yet.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-07-30
 
-First public version. Not yet on npm — see `RELEASING.md` for what has to be
-true before it is.
+First public version.
 
 ### Added
 
@@ -56,6 +55,14 @@ Measured, with its conditions attached, in README.md's "Performance" section.
 The headline number is asserted by `examples/e2e/bench.spec.ts`, so it cannot
 drift away from the documents that quote it — but that benchmark is excluded
 from CI, because its baseline was recorded on one specific machine.
+
+Re-measured on an idle machine immediately before this release, per
+`RELEASING.md` section 3. The 8.3 ms median frame period reproduced
+**identically in all eighteen runs across the two campaigns**. The two
+secondary ranges did move, both downward, and the documents were corrected to
+match: per-frame cost `0.19-0.25` → **`0.17-0.25 ms`**, baseline `~0.06-0.07` →
+**`~0.05-0.07 ms`**. The ratio claim of 2.5-5x held unchanged, measured at
+2.74-4.67x.
 
 [Unreleased]: https://github.com/VanniMnemonic/phaser-isometric/compare/main...HEAD
 [0.1.0]: https://github.com/VanniMnemonic/phaser-isometric/releases/tag/v0.1.0
