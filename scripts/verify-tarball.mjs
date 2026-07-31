@@ -7,7 +7,7 @@
  * workspace whatever the exports map says, so a packaging mistake would stay
  * invisible right up to the first user.
  */
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -37,16 +37,47 @@ let tarball;
 let dir;
 let preview;
 try {
-    console.log('1/7  build');
+    console.log('1/8  build');
     run('pnpm', ['build'], ROOT);
 
-    console.log('2/7  pack');
+    console.log('2/8  pack');
     run('pnpm', ['pack', '--pack-destination', PLUGIN], PLUGIN);
     tarball = readdirSync(PLUGIN).find(f => f.startsWith('phaser-isometric-') && f.endsWith('.tgz'));
     if (!tarball) throw new Error('pnpm pack non ha prodotto alcun tarball');
 
+    // npm normalizza il manifest quando pubblica, e ogni riscrittura esce
+    // come `npm warn publish`. Nessun altro passo di questo gate la vede:
+    // `pnpm pack` non applica quella normalizzazione, quindi il tarball qui
+    // sopra puo' essere perfetto mentre cio' che finisce sul registry ha un
+    // campo diverso da quello che abbiamo scritto e testato.
+    //
+    // Il caso che ha motivato il controllo: un `bin` dichiarato
+    // `./dist/cli.js` veniva riscritto in `dist/cli.js` con il messaggio
+    // «script name dist/cli.js was invalid and removed». Il bin sopravviveva
+    // - il testo del warning e' sbagliato, npm assegna il valore
+    // normalizzato invece di rimuoverlo - ma per stabilirlo e' servito
+    // leggere il sorgente di npm a pubblicazione interrotta a meta'.
+    // Qualunque riscrittura futura deve fallire qui, dove c'e' tempo per
+    // leggerla, e non fra settanta righe di elenco file durante il publish.
+    console.log('3/8  npm non riscrive il manifest in pubblicazione');
+    const dryRun = spawnSync('npm', ['publish', '--dry-run'], { cwd: PLUGIN, encoding: 'utf8' });
+    if (dryRun.status !== 0) {
+        throw new Error(`npm publish --dry-run e' uscito con ${dryRun.status}:\n${dryRun.stderr}`);
+    }
+    const riscritture = (dryRun.stderr ?? '')
+        .split('\n')
+        .filter(riga => riga.includes('npm warn publish'));
+    if (riscritture.length > 0) {
+        throw new Error(
+            'npm riscriverebbe il manifest pubblicato: cio che finisce sul registry non e\n'
+            + 'cio che i test di packaging hanno verificato. Allinea package.json alla forma\n'
+            + 'normalizzata ("npm pkg fix") invece di silenziare il warning.\n\n'
+            + riscritture.join('\n')
+        );
+    }
+
     dir = mkdtempSync(join(tmpdir(), 'phaser-iso-virgin-'));
-    console.log(`3/7  progetto vergine in ${dir}`);
+    console.log(`4/8  progetto vergine in ${dir}`);
 
     writeFileSync(join(dir, 'package.json'), JSON.stringify({
         name: 'virgin', private: true, version: '0.0.0', type: 'module'
@@ -120,13 +151,13 @@ try {
         ''
     ].join('\n'));
 
-    console.log('4/7  install');
+    console.log('5/8  install');
     run('npm', ['install', '--no-audit', '--no-fund', 'phaser@4.2.1', 'vite@^7.3.6', 'typescript@~5.7.2'], dir);
     run('npm', ['install', '--no-audit', '--no-fund', join(PLUGIN, tarball)], dir);
 
     // Prima del typecheck e molto prima del browser: un bin rotto deve
     // fallire in due secondi, non dopo un ciclo di build e un Chromium.
-    console.log('5/7  il bin risponde davvero, attraverso lo shim di npm');
+    console.log('6/8  il bin risponde davvero, attraverso lo shim di npm');
     const BIN = join(dir, 'node_modules/.bin/phaser-isometric');
 
     // (a) Il campo bin e' sopravvissuto a pack, install e creazione del link.
@@ -186,11 +217,11 @@ try {
     }
     console.log(`     bin ok: phaser-isometric@${versioneVista}, dossier reso, exit 2 su --strict`);
 
-    console.log('6/7  typecheck e build');
+    console.log('7/8  typecheck e build');
     run('npx', ['tsc', '--noEmit', '-p', 'tsconfig.json'], dir);
     run('npx', ['vite', 'build'], dir);
 
-    console.log('7/7  disegna davvero?');
+    console.log('8/8  disegna davvero?');
     preview = spawn(
         'npx', ['vite', 'preview', '--port', '4319', '--strictPort'],
         { cwd: dir, stdio: 'ignore', detached: false }
