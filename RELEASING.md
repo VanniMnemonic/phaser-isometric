@@ -73,12 +73,33 @@ update the number (and the "conditions" sentence that travels with it) if it
 moved. Never copy a number measured on a machine under load; it will read as
 true and will not be.
 
-## 4. `npm login`
+## 4. `npm login`, and the three errors that do not say what they mean
 
-Publishing needs an authenticated npm session. As of this writing, `npm
-login` has **not** been run on this development machine — check with
-`npm whoami` before assuming otherwise, and log in if it errors. This is a
-blocking, manual, interactive step: it cannot be scripted or assumed done.
+Publishing needs an authenticated npm session. Check with `npm whoami` — it
+must print the intended publishing account — and run `npm login` if it errors.
+This is a blocking, manual, interactive step: it cannot be scripted or assumed
+done.
+
+**A login does not stay done.** The token npm's web flow writes to `~/.npmrc`
+expires; during the `0.2.0` release it stopped being accepted about eleven
+hours after it was issued, with no warning and no change on this machine.
+`npm whoami` is a per-release check, not a one-time setup step.
+
+The `0.2.0` release took five attempts. Every one of them failed for a reason
+this document already named, because **none of the error messages points at
+its own cause**. The signatures, so the next one costs a minute instead of an
+hour:
+
+| What npm prints | What is actually wrong | Fix |
+| --- | --- | --- |
+| `Cannot read properties of null (reading 'prerelease')`, usually with `npm warn gitignore-fallback` | `npm publish` ran from the **repo root**, whose manifest is private and has no `version`; npm parses it to `null` and crashes before it can tell you | Run from `packages/plugin`. Put the `cd` and the `npm publish` **on one line** — a two-line paste loses the `cd` and lands you here again |
+| `code EOTP` — `This operation requires a one-time password`, with a URL to open | The shell has **no TTY**, so npm cannot print the URL and then wait for the browser challenge. It gives up instead. Opening the URL afterwards does nothing: that process is gone | Publish from a real terminal window, not from a non-interactive shell (this includes running it through a coding agent's shell) |
+| `404 Not Found - PUT https://registry.npmjs.org/<name>` | **Not** a missing package. npm answers `404` instead of `403` when credentials lack write access, so as not to reveal private packages. Here it meant the token had expired | `npm whoami` first — if it returns `401`, `npm login` |
+
+The tell that separates the last two: a valid session that merely needs the
+second factor reaches `EOTP`. A session with no valid credentials never gets
+that far, so **`404` without a preceding `EOTP` means the token, not the
+package**.
 
 ## 5. Move the release out of `[Unreleased]` in `CHANGELOG.md`
 
@@ -113,5 +134,9 @@ reading it here first.
 - [ ] Any performance number about to be re-quoted was re-measured on an idle
       machine in this release cycle
 - [ ] `CHANGELOG.md` has this version in a dated section, not in `[Unreleased]`
-- [ ] `npm whoami` succeeds (logged in as the intended publishing account)
-- [ ] `npm publish` is run from `packages/plugin`, not the repo root
+- [ ] `npm whoami` succeeds (logged in as the intended publishing account) —
+      re-checked for THIS release, not carried over from the last one
+- [ ] `npm publish` is run from `packages/plugin`, not the repo root, with the
+      `cd` on the same line as the command
+- [ ] `npm publish` is run from an interactive terminal — a non-TTY shell
+      cannot complete the 2FA browser challenge and fails with `EOTP`
