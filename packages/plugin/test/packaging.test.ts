@@ -85,14 +85,29 @@ describe('manifest di pubblicazione', () => {
     it('il bin si chiama come il pacchetto e vive dentro dist', () => {
         // Il nome e' cio' che `npx phaser-isometric` risolve: rinominarlo
         // rompe la riga che la documentazione promette, in silenzio.
-        expect(PKG.bin).toEqual({ 'phaser-isometric': './dist/cli.js' });
+        //
+        // Il target NON porta il `./` che ogni voce di `exports` qui sopra ha
+        // invece per obbligo. L'asimmetria e' voluta, ed e' stata misurata:
+        // npm normalizza il bin in fase di publish
+        // (@npmcli/package-json/lib/normalize.js, normalizePackageBin) e
+        // riscrive `./dist/cli.js` in `dist/cli.js`. La riscrittura e' innocua
+        // - il bin sopravvive, verificato eseguendo quel normalizzatore sul
+        // nostro manifest - ma emette
+        //     "bin[phaser-isometric]" script name dist/cli.js was invalid and removed
+        // e quel messaggio e' una menzogna: la riga subito dopo il push del
+        // warning fa `pkg.bin[base] = binTarget`, cioe' ASSEGNA. Nessuno lo
+        // legge cosi' al primo colpo, e ha gia' fatto interrompere una
+        // pubblicazione per capire se il pacchetto stesse uscendo senza CLI.
+        // Tenendo il manifest gia' nella forma normalizzata, il warning non
+        // scatta e cio' che pubblichiamo coincide con cio' che scriviamo.
+        expect(PKG.bin).toEqual({ 'phaser-isometric': 'dist/cli.js' });
 
         // E deve stare DENTRO dist, perche' `files` qui sopra e' congelato a
         // tre voci: un bin in ./bin/ verrebbe dichiarato nel manifest e non
         // spedito nel tarball, e npm creerebbe un link penzolante all'install.
         // Questa e' l'asserzione che lega i due campi fra loro.
         for (const target of Object.values(PKG.bin as Record<string, string>)) {
-            expect(target.startsWith('./dist/'), `${target} e fuori da files`).toBe(true);
+            expect(target.startsWith('dist/'), `${target} e fuori da files`).toBe(true);
             expect(existsSync(resolve(PKG_DIR, target)), `${target} non esiste`).toBe(true);
         }
     });
