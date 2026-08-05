@@ -19,7 +19,32 @@ CI runs on every push and PR. If any step is red, stop here — nothing below
 this line is meaningful on top of a build that does not even compile or test
 clean.
 
-## 2. `pnpm verify:tarball` must pass
+## 2. Bump the version FIRST — the next gate cannot pass without it
+
+```
+cd packages/plugin && npm version minor --no-git-tag-version
+```
+
+This step used to be missing from this file, and its absence is not cosmetic:
+**step 3 below fails outright until it is done.** `npm publish --dry-run`
+contacts the registry, and on a version that is already published it exits
+non-zero with
+
+```
+npm error You cannot publish over the previously published versions: 0.2.0.
+```
+
+which `verify-tarball.mjs` correctly reports as a failed gate. Measured on this
+repo (2026-08-06) while preparing `0.3.0`: run in the documented order, the
+release checklist blocks on its own second item.
+
+`--no-git-tag-version` because the tag belongs after the merge, on the commit
+that CI has actually seen — not on a local working tree. Below `1.0.0` a breaking
+change is permitted in a minor bump (see the section on what `0.x` commits to),
+so `minor` is the right word even for a release that removes or changes public
+API; say so in the changelog rather than reaching for `major`.
+
+## 3. `pnpm verify:tarball` must pass
 
 ```
 pnpm verify:tarball
@@ -54,7 +79,7 @@ also checks that the installed command reports the manifest's version, which is
 what makes "it is by construction the version you installed" an executed fact
 rather than a sentence.
 
-## 3. Re-run the benchmark on an idle machine before re-quoting any number
+## 4. Re-run the benchmark on an idle machine before re-quoting any number
 
 The performance numbers currently in `SKILL.md`, `README.md` and `llms.txt`
 (8.3 ms median frame period at 500 active `IsoSprite`s) are true **as
@@ -73,7 +98,7 @@ update the number (and the "conditions" sentence that travels with it) if it
 moved. Never copy a number measured on a machine under load; it will read as
 true and will not be.
 
-## 4. `npm login`, and the three errors that do not say what they mean
+## 5. `npm login`, and the three errors that do not say what they mean
 
 Publishing needs an authenticated npm session. Check with `npm whoami` — it
 must print the intended publishing account — and run `npm login` if it errors.
@@ -101,7 +126,7 @@ second factor reaches `EOTP`. A session with no valid credentials never gets
 that far, so **`404` without a preceding `EOTP` means the token, not the
 package**.
 
-## 5. Move the release out of `[Unreleased]` in `CHANGELOG.md`
+## 6. Move the release out of `[Unreleased]` in `CHANGELOG.md`
 
 `CHANGELOG.md` lives at the repository root and, like this file, deliberately
 does not ship in the tarball — npm's own always-included set is `package.json`,
@@ -115,7 +140,7 @@ section, and check that the "Known limitations" list still matches what SKILL.md
 says. A changelog that lags the docs is worse than none — it reads as
 authoritative.
 
-## 6. What `0.1.0` commits to, and what it does not
+## 7. What a `0.x` release commits to, and what it does not
 
 The version is `0.1.0`. Below `1.0.0`, semver explicitly permits a breaking
 change inside a minor release — `0.1.0` to `0.2.0` is allowed to change or
@@ -127,9 +152,37 @@ any consumer-facing decision made under time pressure as reversible until
 depending on an 0.x contract as if it were stable, is a worse outcome than
 reading it here first.
 
+## 8. After publishing: `pnpm verify:published`
+
+```
+pnpm verify:published            # the version in the manifest
+pnpm verify:published 0.2.0      # or any published version
+```
+
+The twin of step 3, asking the same question of a different artifact: **not the
+tarball we built, but the one the registry actually served.** Between "our
+tarball is correct" and "a user gets a correct tarball" there is a network and a
+service — npm normalises the manifest at publish time, a publish can be
+interrupted half-way, and a version can be published from the wrong directory.
+Only this crosses them. It installs `phaser-isometric@<version>` from the
+registry into a virgin Vite+TS project outside the monorepo, runs the bin
+through npm's shim, typechecks, builds, and opens the page in Chromium.
+
+Everything the two gates share lives in `scripts/lib/virgin-project.mjs`, so
+they cannot drift apart. That matters here specifically: this script was
+hand-written for `0.1.0` and again for `0.2.0`, both times outside the repo,
+and died with its session both times. It also **prints the registry's
+`dist.shasum`** — compare it with the one `npm publish --dry-run` showed, and
+you have proof that what shipped is bit for bit what was verified.
+
+It lives in the repo and must be run from there: it imports `@playwright/test`,
+which Node resolves from the FILE's location, not the cwd.
+
 ## Checklist
 
 - [ ] `pnpm check` is green
+- [ ] The version in `packages/plugin/package.json` has been bumped to an
+      UNPUBLISHED number — step 3 fails against an already-published one
 - [ ] `pnpm verify:tarball` passes against the tarball about to be published
 - [ ] Any performance number about to be re-quoted was re-measured on an idle
       machine in this release cycle
@@ -140,3 +193,6 @@ reading it here first.
       `cd` on the same line as the command
 - [ ] `npm publish` is run from an interactive terminal — a non-TTY shell
       cannot complete the 2FA browser challenge and fails with `EOTP`
+- [ ] `pnpm verify:published` passes against what the registry actually served,
+      and its `dist.shasum` matches the one the dry-run printed
+- [ ] The tag is pushed on the commit that CI saw, not on a local working tree
