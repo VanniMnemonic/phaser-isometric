@@ -133,6 +133,59 @@ describe('non-divergenza della documentazione', () => {
     });
 });
 
+describe('CHANGELOG.md', () => {
+    const CHANGELOG = readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), '../../../CHANGELOG.md'),
+        'utf8'
+    );
+
+    it('ogni sezione di versione ha la propria definizione di link', () => {
+        // In Keep a Changelog i titoli sono link di RIFERIMENTO: `## [0.3.0]`
+        // senza una riga `[0.3.0]: <url>` in fondo non e' un link rotto, e'
+        // testo grezzo con le parentesi quadre in mezzo — e non lo vede nessuno
+        // finche' qualcuno non apre la pagina su GitHub. E' successo aggiungendo
+        // proprio la sezione 0.3.0: la sezione c'era, la definizione no.
+        const titoli = [...CHANGELOG.matchAll(/^## \[([^\]]+)\]/gm)].map(m => m[1]);
+        const definiti = new Set([...CHANGELOG.matchAll(/^\[([^\]]+)\]:/gm)].map(m => m[1]));
+
+        expect(titoli.length).toBeGreaterThan(1);
+        for (const titolo of titoli) {
+            expect(definiti, `## [${titolo}] non ha una definizione di link`).toContain(titolo);
+        }
+    });
+
+    it('il confronto di [Unreleased] parte dalla versione piu recente', () => {
+        // L'altra meta' dello stesso difetto, e quella che sopravvive piu' a
+        // lungo: la definizione esiste ma punta ancora al tag precedente,
+        // quindi «cosa e' cambiato da allora» mostra anche cio' che e' gia'
+        // stato rilasciato. Il primo titolo dopo [Unreleased] e' la versione da
+        // cui il confronto deve partire.
+        const versioni = [...CHANGELOG.matchAll(/^## \[([^\]]+)\]/gm)]
+            .map(m => m[1])
+            .filter(v => v !== 'Unreleased');
+        const piuRecente = versioni[0];
+        const riga = CHANGELOG.match(/^\[Unreleased\]: .*$/m)?.[0] ?? '';
+
+        expect(piuRecente).toBeTruthy();
+        expect(riga, riga).toContain(`compare/v${piuRecente}...HEAD`);
+    });
+
+    it('la versione in testa al CHANGELOG e quella del manifest pubblicato', () => {
+        // Due sorgenti che devono dire la stessa cosa e che nessuno rilegge
+        // insieme: la sezione datata in cima e il `version` che finisce sul
+        // registry. Divergono in silenzio ogni volta che si alza l'una e non
+        // l'altra, e la scoperta arriva a pubblicazione fatta.
+        const manifest = JSON.parse(readFileSync(
+            resolve(dirname(fileURLToPath(import.meta.url)), '../package.json'), 'utf8'
+        )) as { version: string };
+        const versioni = [...CHANGELOG.matchAll(/^## \[([^\]]+)\]/gm)]
+            .map(m => m[1])
+            .filter(v => v !== 'Unreleased');
+
+        expect(versioni[0]).toBe(manifest.version);
+    });
+});
+
 describe('llms.txt porta il significato, non solo la struttura', () => {
     it('pinna le frasi che un filtro strutturale perderebbe in silenzio', () => {
         // Un filtro che tiene fence/tabelle/liste e butta la prosa perde
