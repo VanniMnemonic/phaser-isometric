@@ -61,6 +61,24 @@ it will not move under you.
 
 ### Added
 
+- **The default depth key's unwritten precondition is now checked.** `keyFor`
+  orders by `gx + gy`, which is a correct painter's order only while `b` and `d`
+  are both positive — advancing along either grid axis has to move DOWN the
+  screen, i.e. toward the camera. The `'diamond'` preset sets both to
+  `tileHeight/2`, so nobody had ever reached the case, and the assumption was
+  written down nowhere and checked nowhere. A `matrix` spec with a negative one
+  draws nearer cells first and sorts tall objects behind what they cover, with
+  no way for Phaser to report it.
+
+  `configure()` now `console.warn`s, and `diagnose` reports
+  `depth-key-assumes-forward-axes`. A warning and not a throw, deliberately: the
+  projection is valid and every other part of the package handles it — it is the
+  DEFAULT strategy that cannot serve it, and `depth.strategy` (ordering by
+  `b*gx + d*gy`) is the supported way out, so a caller who brought their own is
+  not warned at all. A `b` or `d` of exactly `0` is not warned about either: an
+  axis that does not move in `y` cannot produce an occlusion to get wrong, and
+  `--strict` must not fail a sound configuration.
+
 - **`isRhombus(projection)`** (core, re-exported from the plugin entry) — asks
   whether the matrix is in the diamond preset's form, `a = -c` and `b = d`, to
   within a tolerance relative to its own scale. A fact about the matrix, not

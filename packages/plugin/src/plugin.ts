@@ -135,6 +135,42 @@ function avvisaSeLaCacheHaAltro(mapping: string, plugin: unknown): void {
     );
 }
 
+/**
+ * Warns when this projection's axes run BACKWARDS for the default depth key.
+ *
+ * `keyFor` orders by `gx + gy`, which is a correct painter's order only while
+ * advancing along either grid axis moves DOWN the screen — that is, while `b`
+ * and `d` are both positive. The `'diamond'` preset sets both to `tileHeight/2`,
+ * so the question never arises there, which is exactly why the precondition was
+ * never written down anywhere until a review went looking for it.
+ *
+ * A warning, never a throw: the projection is perfectly valid and everything
+ * else in the package handles it. It is the DEFAULT strategy that cannot serve
+ * it, and `opts.depth.strategy` is the supported way out — so a caller who
+ * brought their own is not warned at all.
+ *
+ * Here rather than in the core because the core's `createDepthAssigner` never
+ * sees a projection: `configure()` is the single place both halves exist at
+ * once. `buildDiagnosis` makes the same check for whoever runs the CLI instead.
+ */
+function avvisaSeGliAssiVannoIndietro(proiezione: Projection, opts: IsoConfigureOptions): void {
+    // `< 0` e non `<= 0`: con b = 0 l'asse non muove in y, quindi due celle che
+    // differiscono solo su quell'asse non possono occludersi e il loro ordine e'
+    // indifferente. Avvisare li' sarebbe un falso allarme.
+    if (proiezione.b >= 0 && proiezione.d >= 0) return;
+    if (opts.depth?.strategy) return;
+
+    console.warn(
+        `[phaser-isometric] this projection has b=${proiezione.b} d=${proiezione.d}, but the default ` +
+        'depth key orders by `gx + gy`, which assumes BOTH are positive. Advancing along the negative ' +
+        'axis moves away from the camera, so nearer cells are drawn first and tall objects sort behind ' +
+        'what they should cover — silently, since Phaser has no way to report a wrong sort. Fix: pass ' +
+        'your own `depth.strategy` ordering by `b*gx + d*gy` (the real nearness for this matrix), or ' +
+        'flip the sign of the offending column so both grid axes run forward. ' +
+        'Run `npx phaser-isometric diagnose` for the same check outside the game.'
+    );
+}
+
 export interface IsoConfigureOptions extends ProjectionOptions {
     /** Options forwarded to the core's depth assigner. */
     depth?: DepthAssignerOptions;
@@ -282,6 +318,7 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
         // delle due meta' si aggiorna finche' non sono valide entrambe.
         const proiezione = createProjection(spec, opts);
         const assegnatore = createDepthAssigner(opts.depth);
+        avvisaSeGliAssiVannoIndietro(proiezione, opts);
         this.proiezione = proiezione;
         this.assegnatore = assegnatore;
         return this;

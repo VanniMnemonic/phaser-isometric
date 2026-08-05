@@ -310,6 +310,32 @@ export function buildDiagnosis(input: DiagnosisInput): Diagnosis {
         });
     }
 
+    // La precondizione non scritta della chiave di profondita' di default.
+    // `keyFor` ordina per `gx + gy`, che e' un ordine di pittore valido solo se
+    // avanzare su ENTRAMBI gli assi avvicina alla camera — cioe' se muove verso
+    // il basso dello schermo, cioe' se `b` e `d` sono positivi. Il preset
+    // diamond li ha entrambi a `th/2`, quindi la questione non si pone mai li',
+    // ed e' per questo che nessuno l'aveva mai scritta.
+    //
+    // Solo `< 0`, non `<= 0`: con `b = 0` l'asse gx non muove affatto in y,
+    // quindi due celle che differiscono solo per gx non possono occludersi e
+    // l'ordine fra loro e' indifferente. Avvisare li' sarebbe un falso positivo,
+    // e `--strict` lo trasformerebbe in un exit 2 su una configurazione sana.
+    //
+    // Taciuto quando il chiamante ha portato la propria `strategy`: in quel caso
+    // `gx + gy` non viene mai calcolato, e l'assunzione non e' piu' in gioco.
+    if ((p.b < 0 || p.d < 0) && !input.depth?.strategy) {
+        warnings.push({
+            code: 'depth-key-assumes-forward-axes',
+            symptom:
+                `the default depth key orders by gx + gy, which assumes both b and d are positive, ` +
+                `but this projection has b=${p.b} d=${p.d}: advancing along that axis moves AWAY from ` +
+                'the camera, so nearer cells are drawn first and tall objects sort behind what they cover',
+            fix: 'pass your own depth.strategy ordering by b*gx + d*gy, which is the real nearness for ' +
+                'this matrix; or flip the sign of the offending column so the grid axes both run forward'
+        });
+    }
+
     if (p.elevationStep === 0) {
         warnings.push({
             code: 'elevation-step-zero',

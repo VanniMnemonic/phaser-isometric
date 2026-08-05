@@ -296,3 +296,64 @@ describe('installazione sbagliata', () => {
         warn.mockRestore();
     });
 });
+
+describe('configure(): l avviso sugli assi che vanno indietro', () => {
+    // La chiave di profondita' di default ordina per gx+gy, che e' un ordine di
+    // pittore valido solo se avanzare su entrambi gli assi avvicina alla camera
+    // — cioe' se b e d sono positivi. Il preset diamond li ha entrambi a th/2,
+    // quindi nessun consumatore ci era mai arrivato, e la precondizione non era
+    // scritta ne' controllata da nessuna parte. Un avviso e non un throw: la
+    // proiezione e' valida, e' la strategia di DEFAULT a non servirla.
+    const INDIETRO = { type: 'matrix', a: 48, b: -24, c: -48, d: 48, elevationStep: 24 } as const;
+
+    it('avvisa, e nomina la via d uscita supportata', async () => {
+        const scene = await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        scene.iso.configure(INDIETRO);
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        const msg = String(warn.mock.calls[0]?.[0]);
+        expect(msg).toContain('depth.strategy');
+        expect(msg).toContain('b*gx + d*gy');
+        warn.mockRestore();
+    });
+
+    it('NON avvisa quando il chiamante ha portato la propria strategy', async () => {
+        // Chi ha gia' risolto il problema nel modo supportato non deve vedere
+        // niente: li' gx+gy non viene mai calcolato.
+        const scene = await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        scene.iso.configure(INDIETRO, { depth: { strategy: (gx, gy) => gx - gy } });
+
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    it('NON avvisa sul preset diamond ne su un asse piatto', async () => {
+        const scene = await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        scene.iso.configure(DIAMOND);
+        // b = 0: l'asse gx non muove in y, quindi due celle che differiscono
+        // solo per gx non possono occludersi. Avvisare sarebbe un falso allarme.
+        scene.iso.configure({ type: 'matrix', a: 48, b: 0, c: -48, d: 24, elevationStep: 24 });
+
+        expect(warn).not.toHaveBeenCalled();
+        warn.mockRestore();
+    });
+
+    it('non lancia: la proiezione resta configurata e usabile', async () => {
+        // Il punto della scelta warn-invece-di-throw. Se lanciasse, una
+        // proiezione legittima diventerebbe inutilizzabile per un difetto che
+        // riguarda solo la strategia di default.
+        const scene = await bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+        expect(() => scene.iso.configure(INDIETRO)).not.toThrow();
+        expect(scene.iso.isConfigured).toBe(true);
+        expect(scene.iso.projection.b).toBe(-24);
+        warn.mockRestore();
+    });
+});

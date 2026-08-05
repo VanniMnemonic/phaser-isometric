@@ -195,6 +195,40 @@ describe('buildDiagnosis: i warning', () => {
         expect(codici(CON_GRIGLIA)).not.toContain('grid-exceeds-declared-max-row');
     });
 
+    it('coglie un asse che va INDIETRO, che romperebbe la chiave di profondita di default', () => {
+        // `keyFor` ordina per gx+gy: e' un ordine di pittore valido solo se
+        // avanzare su entrambi gli assi avvicina alla camera, cioe' se b e d
+        // sono positivi. Il preset diamond li mette entrambi a th/2, quindi la
+        // precondizione non si vede mai — ed e' per questo che non era scritta
+        // da nessuna parte.
+        expect(codici({ projection: { type: 'matrix', a: 48, b: -24, c: -48, d: 48, elevationStep: 24 } }))
+            .toContain('depth-key-assumes-forward-axes');
+        expect(codici({ projection: { type: 'matrix', a: 48, b: 24, c: -48, d: -48, elevationStep: 24 } }))
+            .toContain('depth-key-assumes-forward-axes');
+        expect(codici(DIAMANTE_96x48)).not.toContain('depth-key-assumes-forward-axes');
+    });
+
+    it('NON avvisa su un asse piatto (b = 0): li nessuna occlusione e possibile', () => {
+        // La meta' che rende reale la soglia `< 0` invece di `<= 0`. Con b = 0
+        // l'asse gx non muove in y, quindi due celle che differiscono solo per
+        // gx non si sovrappongono mai e il loro ordine e' indifferente:
+        // avvisare sarebbe un falso allarme, e `--strict` lo farebbe uscire 2
+        // su una configurazione sana.
+        expect(codici({ projection: { type: 'matrix', a: 48, b: 0, c: -48, d: 24, elevationStep: 24 } }))
+            .not.toContain('depth-key-assumes-forward-axes');
+    });
+
+    it('TACE quando il chiamante ha portato la propria strategy', () => {
+        // Con una strategy custom `gx + gy` non viene mai calcolato, quindi
+        // l'assunzione non e' piu' in gioco e l'avviso sarebbe rumore. Senza
+        // questa meta', chi ha gia' risolto il problema nel modo supportato si
+        // vedrebbe avvisare comunque — e con `--strict`, fallire la CI.
+        expect(codici({
+            projection: { type: 'matrix', a: 48, b: -24, c: -48, d: 48, elevationStep: 24 },
+            depth: { strategy: (gx, gy) => gx - gy }
+        })).not.toContain('depth-key-assumes-forward-axes');
+    });
+
     it('emette i codici in ordine fisso, non nell ordine di un Set', () => {
         // 97x1: centri frazionari (a=48.5), elevationStep frazionario (0.5) e
         // matrice quasi singolare (conditioning 2/97). Tre insieme, e l'ordine
