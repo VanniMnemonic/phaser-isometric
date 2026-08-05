@@ -10,6 +10,14 @@ it will not move under you.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] — 2026-08-06
+
+**This release contains a breaking change**, in the sense `0.x` permits: a call
+that used to succeed silently now throws. It is spelled out under *Changed*, and
+it only affects code that was already getting a wrong result.
+
 ### Fixed
 
 - **A hit area built for a projection whose cells are not rhombuses was the

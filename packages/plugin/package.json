@@ -1,6 +1,6 @@
 {
     "name": "phaser-isometric",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Isometric plugin for Phaser 4: projection, elevation-aware picking, deterministic depth ordering, O(1) culling and correct world bounds.",
     "keywords": [
         "phaser",
