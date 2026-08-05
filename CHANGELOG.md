@@ -10,7 +10,73 @@ it will not move under you.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A hit area built for a projection whose cells are not rhombuses was the
+  wrong SHAPE, silently.** `makeDiamondHitArea` defaults its size through
+  `tileSizeOf`, which reads only `a` and `d` and never looks at `b` or `c`. On
+  the `'diamond'` preset that is exact, so the defect was invisible for two
+  releases — but on a `'matrix'` spec whose orientation is not 45°, a cell is a
+  skewed parallelogram whose four vertices sit *exactly on the edges* of the
+  rhombus that gets built. The rhombus therefore over-covers the cell by
+  `2cos²θ` — 1.866× at a 15° orientation — and measured against Phaser's own
+  `DisplayList.depthSort()`, **43% of clicks on a cell landed on a neighbour**.
+  Nothing threw and nothing warned, while the debug overlay drew the correct
+  shape: the screen contradicted itself.
+
+  Three changes close it. `makeCellHitArea(target)` (core: `cellPoints`) builds
+  the cell's real shape from `cornersOf`, so there is one formula rather than
+  two that can drift; on the diamond preset it produces byte-identical output to
+  `makeDiamondHitArea`, and it is now what the Quick Start uses.
+  `makeDiamondHitArea` **throws** rather than derive a tile size from a
+  projection that has none — see Changed. And `diagnose` reports the condition
+  as `cell-is-not-a-rhombus`, with the over-cover factor in the symptom.
+
+  Nothing else was affected: `project`, `unproject`, `cornersOf`, `pick`,
+  `worldBounds`, `cullBounds`, `place`, `follow` and the debug overlay were
+  already generic over the matrix, and were measured so (round-trip 1.8e-15
+  cells over 605 probes; 0 pick disagreements over 26,668 sampled points;
+  `worldBounds` exact to 0.000 px against a brute-force envelope).
+
+### Changed
+
+- **`makeDiamondHitArea` now throws `IsoConfigError`** when the tile size would
+  have to be *defaulted* from a projection that is not in the diamond preset's
+  form (`a = -c` and `b = d`, both positive). It is a breaking change only for
+  code that was already getting the wrong shape. Passing **both** `tileWidth`
+  and `tileHeight` is unaffected on any projection: on that path `tileSizeOf`'s
+  value is never used, and an explicit rhombus is a deliberate choice of shape
+  rather than a silent derivation.
+
+  The comparison carries a **relative tolerance**, and that is load-bearing:
+  the closed form for an ordinary 45° axonometry does not produce bit-identical
+  `a` and `-c` — `Math.cos(Math.PI/4)` and `Math.sin(Math.PI/4)` differ by one
+  ulp — so an exact `===` would have thrown on a perfect rhombus, reachable by
+  copying the example this release adds to the documentation.
+
+- **`diagnose --strict` can now exit 2 on a `matrix` configuration that exited
+  0 before**, because `cell-is-not-a-rhombus` is a new warning code and
+  `--strict` treats every warning alike. The configurations affected are the
+  ones the fix above is about; the exit-code contract itself is unchanged.
+
+### Added
+
+- **`isRhombus(projection)`** (core, re-exported from the plugin entry) — asks
+  whether the matrix is in the diamond preset's form, `a = -c` and `b = d`, to
+  within a tolerance relative to its own scale. A fact about the matrix, not
+  about `spec.type`: a hand-written `'matrix'` spec that satisfies both
+  relations is treated as the preset. Read the false direction narrowly — it
+  also rejects a rhombus that is *rotated* or *mirrored*, correctly, because
+  `tileSizeOf` cannot recover a tile size from either.
+- **`cellPoints(projection, { frameWidth, frameHeight, originX, originY })`**
+  (core) and **`applyCellHitArea(target, projection)`** (plugin) — the general
+  form of `diamondPoints` / `applyDiamondHitArea`.
+- `HitAreaTarget`, the projection-agnostic name for the structural target type.
+  `DiamondTarget` remains as an alias, so existing imports keep resolving.
+- The documentation now states what the `matrix` spec actually is — a general
+  axonometry, with the closed form for a given elevation and orientation — and
+  the one thing it cannot express: **roll**, because elevation only ever moves a
+  sprite along screen `-y`.
 
 ## [0.2.0] — 2026-07-31
 

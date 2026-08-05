@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createDepthAssigner, createProjection, cullBounds, DEFAULT_BANDS, IsoConfigError, pick, tileSizeOf, worldBounds } from '@iso-internal/core';
+import { createDepthAssigner, createProjection, cullBounds, DEFAULT_BANDS, IsoConfigError, isRhombus, pick, tileSizeOf, worldBounds } from '@iso-internal/core';
 import type {
     Band,
     Cell,
@@ -18,8 +18,8 @@ import type {
 import { IsoUsageError } from './errors';
 import { IsoSprite, registerIsoSprite } from './iso-sprite';
 import { viewOf } from './camera';
-import { applyDiamondHitArea } from './hit-area';
-import type { DiamondHitAreaOptions, DiamondTarget } from './hit-area';
+import { applyCellHitArea, applyDiamondHitArea } from './hit-area';
+import type { DiamondHitAreaOptions, HitAreaTarget } from './hit-area';
 import { snapshotOf } from './snapshot';
 import type { IsoSnapshot } from './snapshot';
 
@@ -586,14 +586,69 @@ export class IsoPlugin extends Phaser.Plugins.ScenePlugin {
     }
 
     /**
-     * Gives a Game Object a diamond hit area matching one cell. Defaults to the
-     * projection's own tile size.
+     * Gives a Game Object a hit area with the shape of one CELL under this
+     * Scene's projection — a rhombus when the projection is one, a skewed
+     * parallelogram otherwise.
+     *
+     * This is the general one, and the one to reach for. Under the `'diamond'`
+     * preset it produces exactly what `makeDiamondHitArea` does; under any
+     * other axonometry it is the only one of the two that is correct.
      */
-    makeDiamondHitArea<T extends DiamondTarget>(target: T, opts: DiamondHitAreaOptions = {}): T {
+    makeCellHitArea<T extends HitAreaTarget>(target: T): T {
+        return applyCellHitArea(target, this.projection);
+    }
+
+    /**
+     * Gives a Game Object a RHOMBUS hit area. Defaults to the projection's own
+     * tile size.
+     *
+     * Throws when the size would have to be defaulted from a projection whose
+     * cells are not rhombuses, because there is no tile size to default from:
+     * `tileSizeOf` reads only `a` and `d` and would silently describe a shape
+     * that is not the cell. Passing BOTH `tileWidth` and `tileHeight` says the
+     * caller wants a rhombus of their own and is allowed on any projection.
+     */
+    makeDiamondHitArea<T extends HitAreaTarget>(target: T, opts: DiamondHitAreaOptions = {}): T {
+        const proiezione = this.projection;
+
+        // La guardia scatta SOLO quando almeno una delle due misure verrebbe
+        // derivata da `tileSizeOf`. Chi le passa entrambe ha dichiarato la
+        // forma che vuole — un rombo esplicito su una proiezione sghemba e' una
+        // scelta legittima (una hit area piu' generosa della cella, per
+        // esempio) — e su quel percorso il valore di `tileSizeOf` non viene mai
+        // usato. Cio' che non e' legittimo e' DEDURLO in silenzio da una
+        // matrice che non ne ha uno: e' il difetto che questa guardia chiude.
+        //
+        // `== null` e non `=== undefined`: il default sotto e' `??`, il cui
+        // dominio e' {null, undefined}. Con `=== undefined` un `tileWidth: null`
+        // scavalcherebbe la guardia e poi verrebbe dedotto lo stesso — il buco
+        // e' largo un solo valore, ma e' proprio quello che la guardia deve
+        // coprire, e la condizione va scritta sul dominio dell'operatore che
+        // decide davvero.
+        //
+        // `a <= 0 || d <= 0` chiude il rombo SPECCHIATO: `isRhombus` non guarda
+        // i segni, quindi (a=-48, b=24, c=48, d=24) la supera, e `tileSizeOf`
+        // restituirebbe tileWidth = -96 facendo lanciare `requirePositive` con
+        // «pass a positive tileWidth» a chi non ha passato nessun tileWidth.
+        // La cella li' e' davvero un rombo: cio' che manca e' una MISURA, ed e'
+        // questo l'errore da nominare.
+        const misuraDaDedurre = opts.tileWidth == null || opts.tileHeight == null;
+        if (misuraDaDedurre && (!isRhombus(proiezione) || proiezione.a <= 0 || proiezione.d <= 0)) {
+            throw new IsoConfigError(
+                'this projection is not in the diamond preset\'s form ' +
+                `(a=${proiezione.a} b=${proiezione.b} c=${proiezione.c} d=${proiezione.d}: a is not -c, ` +
+                'or b is not d, or a and d are not both positive), so there is no tile size to default a ' +
+                'diamond hit area from',
+                'call makeCellHitArea(target) instead — it builds the cell\'s real shape from the same ' +
+                'projection; or, if you deliberately want a rhombus of your own, pass BOTH tileWidth and ' +
+                'tileHeight to makeDiamondHitArea'
+            );
+        }
+
         // `tileSizeOf` lives in the core: it's the inverse of the diamond
         // preset's own a = tw/2, d = th/2, and the shell has no maths of its
         // own — it only calls into the core, same as everywhere else.
-        const tile = tileSizeOf(this.projection);
+        const tile = tileSizeOf(proiezione);
         return applyDiamondHitArea(
             target,
             opts.tileWidth ?? tile.tileWidth,

@@ -5,9 +5,10 @@ import * as debugApi from '../src/debug';
 
 const ATTESI = new Set([
     'IsoPlugin', 'isoScenePlugin', 'ISO_PLUGIN_KEY',
-    'IsoSprite', 'viewOf', 'applyDiamondHitArea', 'IsoUsageError',
+    'IsoSprite', 'viewOf', 'applyCellHitArea', 'applyDiamondHitArea', 'IsoUsageError',
     'createProjection', 'createDepthAssigner', 'createHeightGrid',
-    'pick', 'cullBounds', 'worldBounds', 'contentBounds', 'diamondPoints',
+    'pick', 'cullBounds', 'worldBounds', 'contentBounds',
+    'cellPoints', 'diamondPoints', 'isRhombus',
     'tileSizeOf',
     'DEFAULT_BANDS', 'DEFAULT_LAYOUT', 'IsoConfigError'
 ]);

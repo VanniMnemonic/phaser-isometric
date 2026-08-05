@@ -160,7 +160,21 @@ describe('llms.txt porta il significato, non solo la struttura', () => {
             // Errors: perche' i percorsi caldi non validano.
             'Hot paths never throw on per-frame input',
             // La clausola sul culling che deve viaggiare col numero.
-            '"500 active" is not "500 drawn on screen"'
+            '"500 active" is not "500 drawn on screen"',
+            // Il limite che questa suite non ha visto per due versioni: fuori
+            // dai 45 gradi la cella non e' un rombo, e una hit area a rombo e'
+            // sbagliata di FORMA. Ancorato qui perche' e' prosa — nessun test
+            // di comportamento puo' accorgersi che la frase e' sparita dai
+            // documenti spediti, ed e' l'unico posto in cui chi legge lo
+            // scopre prima di contare i click.
+            'a cell is not a rhombus',
+            'wrong shape and not merely the wrong size',
+            // E il fatto che l'assonometria generale sia supportata: senza
+            // questa riga il `matrix` spec torna a sembrare un dettaglio
+            // interno, che e' come e' rimasto invisibile finora.
+            'it is a **general axonometry**',
+            // Il solo limite di espressivita' del modello.
+            'The one thing that cannot be expressed is roll'
         ]) {
             expect(LLMS, frase).toContain(frase);
         }

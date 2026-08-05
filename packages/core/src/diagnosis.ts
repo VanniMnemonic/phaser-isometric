@@ -1,4 +1,4 @@
-import { createProjection, tileSizeOf } from './projection';
+import { createProjection, isRhombus, tileSizeOf } from './projection';
 import { createDepthAssigner } from './depth';
 import { worldBounds } from './bounds';
 import type { Projection } from './projection';
@@ -274,6 +274,39 @@ export function buildDiagnosis(input: DiagnosisInput): Diagnosis {
             code: 'fractional-tile-centres',
             symptom: `tile centres land on half pixels (a=${p.a} d=${p.d})`,
             fix: 'use an even tileWidth and tileHeight, for example 96x48'
+        });
+    }
+
+    // Sta accanto a 'fractional-tile-centres' perche' e' l'altra domanda sulla
+    // FORMA della cella, e prima di ogni avviso sulla quota. Non puo' scattare
+    // su uno spec 'diamond': il preset soddisfa entrambe le relazioni per
+    // costruzione.
+    if (!isRhombus(p)) {
+        // Il rapporto fra l'area del rombo che `tileSizeOf` farebbe costruire
+        // (2|a*d|) e l'area vera della cella (|det|). Vale esattamente 1 sulla
+        // forma del preset. Il numero, e non solo il fatto, perche' e' quello
+        // che dice quanto sarebbe sbagliata la hit area: 1.866 a 15 gradi di
+        // orientamento, cioe' 2cos^2(15 gradi).
+        //
+        // Puo' stare da ENTRAMBE le parti dell'1 — oltre i 45 gradi il rombo
+        // SOTTOcopre — quindi il sintomo non dice "sovracopre", dice il
+        // rapporto e lascia che sia il numero a nominare il verso.
+        //
+        // Formattato, non interpolato grezzo: `${x}` su 2/9000000 stampa
+        // `2.2222219753086693e-7`, e la notazione scientifica dentro la scheda
+        // e' esattamente cio' che il sentinella `num()` del renderer esiste per
+        // impedire — solo che qui il valore nasce nel core, dove il renderer
+        // non lo intercetta piu'.
+        const rapporto = Math.abs(2 * p.a * p.d) / Math.abs(p.det);
+        const reso = Number.isFinite(rapporto) ? rapporto.toFixed(3) : 'na';
+        warnings.push({
+            code: 'cell-is-not-a-rhombus',
+            symptom:
+                `the projection is not in the diamond preset's form (a=${p.a} b=${p.b} c=${p.c} d=${p.d}: ` +
+                `a is not -c, or b is not d), so there is no tile size to derive a diamond hit area from — ` +
+                `the rhombus tileSizeOf describes has ${reso} times the cell's own area`,
+            fix: 'give game objects their hit area with makeCellHitArea(target), not makeDiamondHitArea(target): ' +
+                'tileSizeOf reads only a and d, so a rhombus derived from it is the wrong SHAPE, not just the wrong size'
         });
     }
 

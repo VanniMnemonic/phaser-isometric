@@ -8,8 +8,8 @@ export { IsoSprite } from './iso-sprite';
 export { viewOf } from './camera';
 export type { CameraScalars } from './camera';
 
-export { applyDiamondHitArea } from './hit-area';
-export type { DiamondHitAreaOptions, DiamondTarget } from './hit-area';
+export { applyCellHitArea, applyDiamondHitArea } from './hit-area';
+export type { DiamondHitAreaOptions, DiamondTarget, HitAreaTarget } from './hit-area';
 
 export type { IsoSnapshot } from './snapshot';
 
@@ -19,11 +19,13 @@ export { IsoUsageError } from './errors';
 // the core exists.
 export {
     createProjection, createDepthAssigner, createHeightGrid,
-    pick, cullBounds, worldBounds, contentBounds, diamondPoints, tileSizeOf,
+    pick, cullBounds, worldBounds, contentBounds, cellPoints, diamondPoints,
+    isRhombus, tileSizeOf,
     DEFAULT_BANDS, DEFAULT_LAYOUT, IsoConfigError
 } from '@iso-internal/core';
 export type {
     Projection, DepthAssigner, DepthAssignerOptions, HeightGrid, HeightSource,
     Point, Cell, Rect, GridRect, Band, DepthLayout, DepthStrategy,
-    ProjectionSpec, ProjectionOptions, PickOptions, CullPadding, DiamondPointsOptions
+    ProjectionSpec, ProjectionOptions, PickOptions, CullPadding,
+    CellPointsOptions, DiamondPointsOptions
 } from '@iso-internal/core';

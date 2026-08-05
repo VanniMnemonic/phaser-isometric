@@ -2,7 +2,8 @@
 
 An isometric plugin for [Phaser](https://phaser.io) 4, in TypeScript: projection,
 elevation-aware picking, deterministic depth ordering, view culling and correct
-world bounds for a diamond-grid game.
+world bounds for a diamond-grid game — and, through its `matrix` spec, for any
+axonometry, at any elevation and any orientation, not just the usual 45°.
 
 ## Why this exists
 
@@ -71,9 +72,10 @@ class Level extends Phaser.Scene {
                 const tile = this.add.isoSprite(gx, gy, 'tile');
                 tile.setCell(gx, gy, z, this.iso.bands.floor);
                 // The default hit area is a rectangle over the whole frame,
-                // which on a diamond over-covers by roughly double and steals
-                // clicks from its neighbours.
-                this.iso.makeDiamondHitArea(tile);
+                // which over-covers a cell by roughly double and steals clicks
+                // from its neighbours. This installs the cell's real shape,
+                // whatever the projection is.
+                this.iso.makeCellHitArea(tile);
             }
         }
 
