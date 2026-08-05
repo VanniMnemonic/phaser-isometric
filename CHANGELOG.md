@@ -197,6 +197,7 @@ match: per-frame cost `0.19-0.25` → **`0.17-0.25 ms`**, baseline `~0.06-0.07` 
 **`~0.05-0.07 ms`**. The ratio claim of 2.5-5x held unchanged, measured at
 2.74-4.67x.
 
-[Unreleased]: https://github.com/VanniMnemonic/phaser-isometric/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/VanniMnemonic/phaser-isometric/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/VanniMnemonic/phaser-isometric/releases/tag/v0.3.0
 [0.2.0]: https://github.com/VanniMnemonic/phaser-isometric/releases/tag/v0.2.0
 [0.1.0]: https://github.com/VanniMnemonic/phaser-isometric/releases/tag/v0.1.0
