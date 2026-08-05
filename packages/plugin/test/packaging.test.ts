@@ -25,7 +25,7 @@ function elencoRicorsivo(dir: string): string[] {
 describe('manifest di pubblicazione', () => {
     it('e pubblicabile', () => {
         expect(PKG.private).toBeUndefined();
-        expect(PKG.version).toBe('0.2.0');
+        expect(PKG.version).toBe('0.3.0');
         expect(PKG.license).toBe('MIT');
         expect(PKG.type).toBe('module');
     });

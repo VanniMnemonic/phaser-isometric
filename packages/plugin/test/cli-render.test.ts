@@ -5,7 +5,7 @@ import { SCHEDA_96x48_24x24 } from './expected-card';
 import type { Diagnosis } from '@iso-internal/core';
 import type { RenderMeta } from '../src/cli-render';
 
-const META: RenderMeta = { tool: 'phaser-isometric', version: '0.2.0', command: 'diagnose' };
+const META: RenderMeta = { tool: 'phaser-isometric', version: '0.3.0', command: 'diagnose' };
 
 const SANO = buildDiagnosis({
     projection: { type: 'diamond', tileWidth: 96, tileHeight: 48 },

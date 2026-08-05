@@ -11,7 +11,7 @@
  */
 export const SCHEDA_96x48_24x24 = `## META
 tool=phaser-isometric
-version=0.2.0
+version=0.3.0
 schema=1
 command=diagnose
 warnings=0
