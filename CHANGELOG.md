@@ -41,18 +41,33 @@ it will not move under you.
 ### Changed
 
 - **`makeDiamondHitArea` now throws `IsoConfigError`** when the tile size would
-  have to be *defaulted* from a projection whose cells are not rhombuses. It is
-  a breaking change only for code that was already getting the wrong shape.
-  Passing **both** `tileWidth` and `tileHeight` is unaffected on any projection:
-  that path never consults `tileSizeOf`, and an explicit rhombus is a deliberate
-  choice of shape rather than a silent derivation.
+  have to be *defaulted* from a projection that is not in the diamond preset's
+  form (`a = -c` and `b = d`, both positive). It is a breaking change only for
+  code that was already getting the wrong shape. Passing **both** `tileWidth`
+  and `tileHeight` is unaffected on any projection: on that path `tileSizeOf`'s
+  value is never used, and an explicit rhombus is a deliberate choice of shape
+  rather than a silent derivation.
+
+  The comparison carries a **relative tolerance**, and that is load-bearing:
+  the closed form for an ordinary 45° axonometry does not produce bit-identical
+  `a` and `-c` — `Math.cos(Math.PI/4)` and `Math.sin(Math.PI/4)` differ by one
+  ulp — so an exact `===` would have thrown on a perfect rhombus, reachable by
+  copying the example this release adds to the documentation.
+
+- **`diagnose --strict` can now exit 2 on a `matrix` configuration that exited
+  0 before**, because `cell-is-not-a-rhombus` is a new warning code and
+  `--strict` treats every warning alike. The configurations affected are the
+  ones the fix above is about; the exit-code contract itself is unchanged.
 
 ### Added
 
 - **`isRhombus(projection)`** (core, re-exported from the plugin entry) — asks
-  whether `a === -c && b === d`. A fact about the matrix, not about `spec.type`:
-  a hand-written `'matrix'` spec that satisfies both relations *is* a rhombus
-  and is treated as one.
+  whether the matrix is in the diamond preset's form, `a = -c` and `b = d`, to
+  within a tolerance relative to its own scale. A fact about the matrix, not
+  about `spec.type`: a hand-written `'matrix'` spec that satisfies both
+  relations is treated as the preset. Read the false direction narrowly — it
+  also rejects a rhombus that is *rotated* or *mirrored*, correctly, because
+  `tileSizeOf` cannot recover a tile size from either.
 - **`cellPoints(projection, { frameWidth, frameHeight, originX, originY })`**
   (core) and **`applyCellHitArea(target, projection)`** (plugin) — the general
   form of `diamondPoints` / `applyDiamondHitArea`.

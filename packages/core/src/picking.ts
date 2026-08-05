@@ -52,16 +52,23 @@ export interface PickOptions {
  * is specific to the `'diamond'` preset is the "matches `Polygon.Contains`"
  * justification above, and only because of which HIT AREA is installed.
  *
- * Use `makeCellHitArea` (`cellPoints`) on a non-rhombus projection and the
- * boundary agreement holds by construction, because those hit areas are the
- * cells. Use `makeDiamondHitArea` and it does not: `tileSizeOf` reads only `a`
- * and `d`, never `b` or `c`, so the rhombus it describes is the wrong SHAPE
- * and not merely wrong at the tie. That is not a measure-zero edge: the cell
- * is inscribed in that rhombus with all four vertices exactly on its edges, so
- * the rhombus over-covers by `2cos²θ` — 1.866× at a 15° orientation — and 43%
- * of clicks land on a neighbour. `IsoPlugin#makeDiamondHitArea` now refuses to
- * derive its size from such a projection rather than let this happen silently;
- * `buildDiagnosis` reports it as `cell-is-not-a-rhombus`.
+ * Use `makeCellHitArea` (`cellPoints`) and those hit areas ARE the cells, so
+ * they tile: no point is claimed twice and none is orphaned. Whether the tie on
+ * a shared edge then falls the same way `pick()` rounds it is a narrower claim
+ * that holds while `det/b` and `det/d` are positive — the same sign hypothesis
+ * the DIRECTION note above already states — and inverts, on one axis at a time,
+ * outside it. The tiling itself survives either way.
+ *
+ * Use `makeDiamondHitArea` and even the tiling is gone: `tileSizeOf` reads only
+ * `a` and `d`, never `b` or `c`, so the rhombus it describes is the wrong SHAPE
+ * and not merely wrong at the tie. That is not a measure-zero edge. The measure
+ * is `2|a·d| / |det|`, exactly 1 on the preset's form: at a 15° orientation it
+ * is 1.866, the cell is inscribed in the rhombus with all four vertices on its
+ * edges, and 43% of clicks land on a neighbour; past 45° it drops below 1 and
+ * the rhombus under-covers instead, losing clicks inside the cell itself.
+ * `IsoPlugin#makeDiamondHitArea` now refuses to derive its size from such a
+ * projection rather than let either happen silently, and `buildDiagnosis`
+ * reports it as `cell-is-not-a-rhombus`.
  *
  * DECLARED LIMIT: finds only TOP faces. The vertical side of a column is not
  * pickable — that would need a volumetric model, which the one-elevation-

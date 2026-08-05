@@ -50,9 +50,6 @@ export function cellPoints(projection: Projection, opts: CellPointsOptions): num
     // `cornersOf(0, 0, 0)` is the cell at the grid origin, so its vertices are
     // `origin + offset`: subtracting `origin` leaves the four offsets, which
     // are the same for every cell because the transform is affine.
-    // `cornersOf(0, 0, 0)` is the cell at the grid origin, so its vertices are
-    // `origin + offset`: subtracting `origin` leaves the four offsets, which
-    // are the same for every cell because the transform is affine.
     const out: number[] = [];
     for (const corner of projection.cornersOf(0, 0, 0)) {
         out.push(cx + (corner.x - projection.origin.x), cy + (corner.y - projection.origin.y));

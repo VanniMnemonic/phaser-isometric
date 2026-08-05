@@ -397,7 +397,9 @@ this.iso.makeDiamondHitArea(tile, { tileWidth: 96, tileHeight: 48 });   // an ex
 
 Phaser's default hit area is a rectangle over the whole frame, which over-covers a cell by roughly a factor of two and steals clicks from the neighbours. Both of these install a `Phaser.Geom.Polygon` with `Polygon.Contains` as the callback — the same half-open rule `pick()` matches. Re-calling either on an already-interactive object mutates the hit area in place, on purpose (see gotcha 11).
 
-`makeCellHitArea` builds the cell's real shape from the projection, so it is right under the diamond preset (where it produces exactly what `makeDiamondHitArea` does) and right under any other axonometry too. `makeDiamondHitArea` builds a rhombus, and **throws** rather than derive its size from a projection whose cells are not rhombuses: `tileSizeOf` reads only `a` and `d`, never `b` or `c`, so the rhombus it would describe is the wrong shape and not merely the wrong size. Pass both `tileWidth` and `tileHeight` and it is allowed on any projection — that is a deliberate choice of shape, not a silent derivation.
+`makeCellHitArea` builds the cell's real shape from the projection, so it is right under the diamond preset (where it produces exactly what `makeDiamondHitArea` does) and right under any other axonometry too. `makeDiamondHitArea` builds a rhombus, and **throws** rather than derive its size from a projection that is not in the preset's form: `tileSizeOf` reads only `a` and `d`, never `b` or `c`, so the rhombus it would describe is the wrong shape and not merely the wrong size. Pass both `tileWidth` and `tileHeight` and it is allowed on any projection — that is a deliberate choice of shape, not a silent derivation.
+
+How wrong is measured by `2|a·d| / |det|`, which `diagnose` prints: exactly 1 on the preset's form, 1.866 at a 15° orientation (where the cell is inscribed in the rhombus and 43% of clicks land on a neighbour), and *below* 1 past 45°, where the rhombus under-covers and the cell stops responding to clicks inside itself. Neither direction is the harmless one.
 
 ### The debug overlay
 
@@ -529,7 +531,7 @@ Run `npx phaser-isometric help` for every flag.
 
 ### Core exports, from either entry point
 
-`createProjection`, `createDepthAssigner`, `createHeightGrid`, `pick`, `cullBounds`, `worldBounds`, `contentBounds`, `diamondPoints`, `tileSizeOf`, `DEFAULT_BANDS`, `DEFAULT_LAYOUT`, `IsoConfigError`.
+`createProjection`, `createDepthAssigner`, `createHeightGrid`, `pick`, `cullBounds`, `worldBounds`, `contentBounds`, `cellPoints`, `diamondPoints`, `isRhombus`, `tileSizeOf`, `DEFAULT_BANDS`, `DEFAULT_LAYOUT`, `IsoConfigError`.
 
 From the plugin entry only: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyCellHitArea`, `applyDiamondHitArea`, `IsoUsageError`. From `phaser-isometric/core` only: `buildDebugModel`, with its `DebugModel`, `DebugModelOptions` and `DebugLabel` types — the Phaser-free model behind the overlay, for a debug view of your own.
 
@@ -574,4 +576,4 @@ The two bounds functions answer different questions, and the list above is the o
 
 16. **A fractional `gx`/`gy` throws when a depth key is computed.** An actor halfway between two cells would break the row-dominates-band ordering, so round grid coordinates before placing. Screen-space smoothing belongs on the camera or on the sprite's own tween, not in the cell.
 
-17. **Off 45°, a cell is not a rhombus, so a diamond hit area is the wrong SHAPE.** On a `matrix` spec with an orientation other than 45°, the cell is a skewed parallelogram whose four vertices sit exactly on the edges of the rhombus `tileSizeOf` would describe — so that rhombus over-covers by `2cos²θ` (1.866× at 15°) and takes 43% of its neighbours' clicks, while the debug overlay draws the correct shape and the screen contradicts itself. Reach for `makeCellHitArea`; `makeDiamondHitArea` now throws rather than derive a size that does not exist, and `diagnose` reports `cell-is-not-a-rhombus`. Depth ordering is unaffected for sprites no wider than one cell, and `pick()` was never affected.
+17. **Off 45°, a cell is not a rhombus, so a diamond hit area is the wrong SHAPE.** On a `matrix` spec with an orientation other than 45°, the cell is a skewed parallelogram, and the rhombus `tileSizeOf` would describe has `2|a·d|/|det|` times its area — at 15° that is 1.866 (`2cos²θ`, the cell inscribed in it with all four vertices on its edges) and 43% of clicks land on a neighbour, while past 45° the ratio drops below 1 and the rhombus under-covers instead, losing clicks inside the cell. Meanwhile the debug overlay draws the correct shape, so the screen contradicts itself. Reach for `makeCellHitArea`; `makeDiamondHitArea` now throws rather than derive a size that does not exist, and `diagnose` reports `cell-is-not-a-rhombus` with the ratio. Depth ordering is unaffected for sprites no wider than one cell, and `pick()` was never affected.

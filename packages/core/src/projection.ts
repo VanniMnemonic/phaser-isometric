@@ -164,23 +164,44 @@ export function createProjection(spec: ProjectionSpec, opts: ProjectionOptions =
     });
 }
 
+/** Relative to the matrix's own scale, not absolute: the components are screen
+ *  pixels per grid step, so a fixed epsilon would mean something different on a
+ *  32px tile and on a 1024px one. `1e-9` sits seven orders of magnitude above
+ *  the float noise this exists to absorb (~1e-16 relative) and seven below the
+ *  smallest real departure worth catching — at a 44.999° orientation the
+ *  residual is already 4e-3 relative. */
+const TOLLERANZA_ROMBO = 1e-9;
+
 /**
- * Whether this projection's cell is the `'diamond'` preset's rhombus — that
- * is, whether `a = -c` and `b = d`, the two relations the preset builds by
- * construction (`a = tw/2, b = th/2, c = -tw/2, d = th/2`).
+ * Whether this projection is in the `'diamond'` preset's FORM: `a = -c` and
+ * `b = d`, the two relations the preset builds by construction
+ * (`a = tw/2, b = th/2, c = -tw/2, d = th/2`).
  *
  * It is a fact about the MATRIX, not about `spec.type`, and that is the point:
- * `Projection` does not retain the spec, and a `'matrix'` spec that happens to
- * satisfy both relations *is* a rhombus and deserves to be treated as one.
- * Conversely, any projection this returns `false` for has cells that are
- * skewed parallelograms, which is what makes {@link tileSizeOf} — and
- * therefore any rhombus-shaped hit area — dishonest for it.
+ * `Projection` does not retain the spec, and a `'matrix'` spec that satisfies
+ * both relations is the same projection the preset would have built, so it
+ * deserves the same treatment.
  *
- * A degenerate `a = -c = 0` cannot reach here: it forces `det = 0`, which
- * `createProjection` rejects outright.
+ * Read the FALSE direction narrowly. It does not say "the cell is not a
+ * rhombus" — a matrix can describe a rhombus that is ROTATED (`a=3, b=4, c=4,
+ * d=3`: all four sides measure 5) or MIRRORED, and this returns `false` for
+ * both. It says the cell is not the axis-aligned diamond that
+ * {@link tileSizeOf} can recover a tile size from and that `diamondPoints` can
+ * describe — which is the question every caller actually has, and the reason
+ * rejecting those two cases is correct rather than a miss.
+ *
+ * The comparison carries a tolerance, and that is load-bearing rather than
+ * defensive: the closed form for an ordinary 45° axonometry
+ * (`a = S·cos o, c = -S·sin o`) does NOT produce bit-identical `a` and `-c`,
+ * because `Math.cos(Math.PI/4)` and `Math.sin(Math.PI/4)` differ by one ulp.
+ * With an exact `===` this returned `false` for a perfect rhombus, and every
+ * caller downstream then reported a defect that was not there.
  */
 export function isRhombus(projection: Pick<Projection, 'a' | 'b' | 'c' | 'd'>): boolean {
-    return projection.a === -projection.c && projection.b === projection.d;
+    const { a, b, c, d } = projection;
+    const scala = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d));
+    const eps = TOLLERANZA_ROMBO * scala;
+    return Math.abs(a + c) <= eps && Math.abs(b - d) <= eps;
 }
 
 /**
@@ -188,13 +209,18 @@ export function isRhombus(projection: Pick<Projection, 'a' | 'b' | 'c' | 'd'>): 
  * diamond preset's own `a = tileWidth/2`, `d = tileHeight/2`.
  *
  * Only meaningful when {@link isRhombus} holds. `Projection` does not retain
- * `spec.type`, so on a skewed matrix this returns a number shaped like a tile
+ * `spec.type`, so on any other matrix this returns a number shaped like a tile
  * size that isn't one — and it is wrong in SHAPE, not merely in scale: it
- * reads only `a` and `d` and never looks at `b` or `c`, so the rhombus it
- * describes has the cell's four true vertices sitting exactly on its edges
- * (verified: the cell is inscribed in it) while its area exceeds the cell's
- * `|det|` by `2cos²θ`, with θ the orientation. At a 15° orientation that is
- * 1.866×, and a hit area built from it takes 43% of its neighbours' clicks.
+ * reads only `a` and `d` and never looks at `b` or `c`.
+ *
+ * `2|a·d| / |det|` measures how badly. It is exactly 1 on the preset's form.
+ * ABOVE 1 the rhombus over-covers and takes clicks from the neighbours: at a
+ * 15° orientation it is 1.866 (`2cos²θ`, and there the cell's four vertices sit
+ * exactly on the rhombus's edges — it is inscribed), and 43% of clicks land on
+ * a neighbour. BELOW 1 — past 45°, and on skewed matrices generally — the
+ * rhombus UNDER-covers instead, and the cell stops responding to clicks inside
+ * itself. Neither direction is the harmless one, and the inscription is
+ * particular to `a·b + c·d = 0`, not a general fact.
  *
  * So do NOT reach for this to size a hit area on an arbitrary projection —
  * that is what `cellPoints` is for. Callers that legitimately want it are the

@@ -318,6 +318,57 @@ describe('isRhombus', () => {
         }))).toBe(false);
     });
 
+    it('e vero sulla forma chiusa a 45 gradi, dove i float NON tornano bit per bit', () => {
+        // Il caso che un `===` esatto sbagliava, e la documentazione spedita e'
+        // la strada piu' corta per arrivarci: la forma chiusa pubblicata nella
+        // SKILL.md, valutata a 45 gradi, da' a = 101.82337649086286 e
+        // c = -101.82337649086284 — un ulp di scarto fra Math.cos(PI/4) e
+        // Math.sin(PI/4). Con l'uguaglianza esatta `isRhombus` rispondeva
+        // `false` su un rombo perfetto, `makeDiamondHitArea` lanciava, e
+        // `diagnose` avvisava con fattore 1: un allarme smentito dal proprio
+        // numero.
+        const S = 144;
+        const o = Math.PI / 4;
+        const e = (30 * Math.PI) / 180;
+        const p = createProjection({
+            type: 'matrix',
+            a: S * Math.cos(o), b: S * Math.sin(o) * Math.sin(e),
+            c: -S * Math.sin(o), d: S * Math.cos(o) * Math.sin(e),
+            elevationStep: S * Math.cos(e)
+        });
+
+        // La premessa del test, asserita e non supposta: i due valori NON sono
+        // uguali bit per bit. Se un giorno lo diventassero, questo test
+        // smetterebbe di sorvegliare la tolleranza e va saputo.
+        expect(p.a === -p.c && p.b === p.d).toBe(false);
+        expect(isRhombus(p)).toBe(true);
+    });
+
+    it('la tolleranza non ingoia uno scarto vero: 44 gradi non e un rombo', () => {
+        // Sette ordini di grandezza separano il rumore (1.4e-16 relativo) dal
+        // piu' piccolo scostamento che interessa. Senza questa sonda, allargare
+        // la tolleranza fino a rendere il predicato inutile passerebbe.
+        const S = 144;
+        const e = (30 * Math.PI) / 180;
+        for (const gradi of [44, 44.999]) {
+            const o = (gradi * Math.PI) / 180;
+            expect(isRhombus(createProjection({
+                type: 'matrix',
+                a: S * Math.cos(o), b: S * Math.sin(o) * Math.sin(e),
+                c: -S * Math.sin(o), d: S * Math.cos(o) * Math.sin(e),
+                elevationStep: S * Math.cos(e)
+            })), `${gradi} gradi`).toBe(false);
+        }
+    });
+
+    it('e falso su un rombo RUOTATO: non e la forma che diamondPoints sa descrivere', () => {
+        // (3,4,4,3) ha quattro lati di lunghezza 5 — geometricamente un rombo,
+        // ma ruotato, quindi `tileSizeOf` non ne recupera nessuna misura e il
+        // rifiuto e' corretto. E' il motivo per cui il predicato si chiama sulla
+        // FORMA del preset e non sulla romboidita' in astratto.
+        expect(isRhombus({ a: 3, b: 4, c: 4, d: 3 })).toBe(false);
+    });
+
     it('vuole ENTRAMBE le relazioni: una sola non basta', () => {
         // Due sonde speculari. Senza di esse un `||` al posto di un `&&`
         // passerebbe il test precedente per meta' delle matrici sghembe, e la

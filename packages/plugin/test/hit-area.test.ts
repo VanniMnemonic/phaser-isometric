@@ -174,8 +174,9 @@ describe('assonometria sghemba: la cella non e un rombo', () => {
     });
 
     it('ACCETTA un rombo esplicito: chi passa entrambe le misure ha dichiarato la forma', async () => {
-        // Zero falsi positivi: su questo percorso `tileSizeOf` non viene
-        // nemmeno consultato, quindi non c'e' niente di disonesto da fermare.
+        // Zero falsi positivi: su questo percorso il valore di `tileSizeOf` non
+        // viene mai usato (i due `??` lo scartano), quindi non c'e' niente di
+        // disonesto da fermare.
         const scene = await conAssonometria();
         const s = scene.add.isoSprite(0, 0, '__DEFAULT');
 
@@ -259,9 +260,103 @@ describe('assonometria sghemba: la cella non e un rombo', () => {
 
         expect(contesi).toBe(0);
         // Non vacuo: una misura che non trova niente non prova niente finche'
-        // non le si e' visto trovare qualcosa. Con 61x61 sonde su un'area di
-        // 3x3 celle, la maggioranza schiacciante deve cadere dentro UNA cella.
-        expect(rivendicatiUnaVolta).toBeGreaterThan(3000);
+        // non le si e' visto trovare qualcosa. Il valore vero e' 3720 su 3721
+        // sonde (una sola cade fuori da ogni cella). La soglia e' TARATA su
+        // quel numero, non scelta larga: la cella meno popolosa delle nove ne
+        // rivendica 307, quindi a 3700 la sparizione completa anche solo della
+        // hit area angolare diventa rossa. Una soglia a 3000 — la prima
+        // stesura — lasciava passare la scomparsa di QUALUNQUE delle nove,
+        // centrale inclusa (il minimo sarebbe stato 3119).
+        expect(rivendicatiUnaVolta).toBeGreaterThan(3700);
+    });
+
+    it('i quattro vertici cadono DOVE devono, non solo in una forma della giusta area', async () => {
+        // Area e tassellatura sono entrambe invarianti per TRASLAZIONE: con i
+        // poligoni spostati tutti di (40,40) px restano area |det| e zero
+        // contesi. Servono quindi coordinate assolute, o la sostituzione delle
+        // due divisioni `displayOriginX / width` con un 0.5 costante resterebbe
+        // verde su ogni sprite di test (che ha origine 0,5 — un
+        // delete-the-call-site da manuale).
+        const scene = await conAssonometria();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+        s.setOrigin(0.5, 1);          // ancorato ai PIEDI: sposta la hit area
+        scene.iso.makeCellHitArea(s);
+
+        const p = scene.iso.projection;
+        // Calcolati qui dalla matrice, non letti da cornersOf: +/- halfSum e
+        // +/- halfDiff attorno all'origine display.
+        const hs = { x: (p.a + p.c) / 2, y: (p.b + p.d) / 2 };
+        const hd = { x: (p.a - p.c) / 2, y: (p.b - p.d) / 2 };
+        const cx = s.displayOriginX;
+        const cy = s.displayOriginY;
+        const attesi = [
+            { x: cx - hs.x, y: cy - hs.y },
+            { x: cx + hd.x, y: cy + hd.y },
+            { x: cx + hs.x, y: cy + hs.y },
+            { x: cx - hd.x, y: cy - hd.y }
+        ];
+
+        const punti = (s.input!.hitArea as Phaser.Geom.Polygon).points;
+        expect(punti).toHaveLength(4);
+        for (let i = 0; i < 4; i++) {
+            expect(punti[i]!.x, `vertice ${i} x`).toBeCloseTo(attesi[i]!.x, 9);
+            expect(punti[i]!.y, `vertice ${i} y`).toBeCloseTo(attesi[i]!.y, 9);
+        }
+        // E l'origine ai piedi ha DAVVERO spostato la forma: senza questo, un
+        // 0.5 costante darebbe gli stessi numeri e il test non distinguerebbe.
+        expect(cy).not.toBeCloseTo(s.height / 2, 6);
+    });
+
+    it('a 45 gradi makeDiamondHitArea NON lancia: quello e un rombo, per quanto i float non tornino', async () => {
+        // La forma chiusa della documentazione a 45 gradi da' a e -c diversi di
+        // un ulp. Con un confronto esatto la guardia lanciava su una
+        // proiezione perfettamente legittima — un falso positivo raggiungibile
+        // copiando l'esempio spedito.
+        const scene = await bootGame({
+            plugins: { scene: [isoScenePlugin({ projection: {
+                type: 'matrix',
+                a: SCALA * Math.cos(Math.PI / 4), b: SCALA * Math.sin(Math.PI / 4) * Math.sin(E),
+                c: -SCALA * Math.sin(Math.PI / 4), d: SCALA * Math.cos(Math.PI / 4) * Math.sin(E),
+                elevationStep: SCALA * Math.cos(E)
+            } })] }
+        });
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        expect(() => scene.iso.makeDiamondHitArea(s)).not.toThrow();
+        expect(buildDiagnosis({ projection: { type: 'matrix',
+            a: SCALA * Math.cos(Math.PI / 4), b: SCALA * Math.sin(Math.PI / 4) * Math.sin(E),
+            c: -SCALA * Math.sin(Math.PI / 4), d: SCALA * Math.cos(Math.PI / 4) * Math.sin(E),
+            elevationStep: SCALA * Math.cos(E)
+        } }).warnings.map(w => w.code)).not.toContain('cell-is-not-a-rhombus');
+    });
+
+    it('un tileWidth null non scavalca la guardia: e il dominio di ??, non solo undefined', async () => {
+        const scene = await conAssonometria();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        // `null ?? tile.tileWidth` deduce comunque da tileSizeOf, quindi un
+        // controllo su `=== undefined` lascerebbe passare esattamente il caso
+        // che la guardia esiste per chiudere.
+        expect(() => scene.iso.makeDiamondHitArea(
+            s, { tileWidth: null as unknown as number, tileHeight: null as unknown as number }
+        )).toThrow(IsoConfigError);
+    });
+
+    it('un rombo SPECCHIATO non muore parlando di un tileWidth che nessuno ha passato', async () => {
+        // (a=-48, b=24, c=48, d=24) supera isRhombus (i segni non li guarda) ma
+        // tileSizeOf restituisce -96, e requirePositive rispondeva «pass a
+        // positive tileWidth» a chi non ne aveva passato nessuno. La cella li'
+        // E' un rombo: cio' che manca e' una misura, ed e' quello da nominare.
+        const scene = await bootGame({
+            plugins: { scene: [isoScenePlugin({
+                projection: { type: 'matrix', a: -48, b: 24, c: 48, d: 24, elevationStep: 24 }
+            })] }
+        });
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        expect(() => scene.iso.makeDiamondHitArea(s)).toThrow(/makeCellHitArea/);
+        // E la via d'uscita generale funziona davvero su quella proiezione.
+        expect(() => scene.iso.makeCellHitArea(s)).not.toThrow();
     });
 
     it('diagnose avvisa che la cella non e un rombo, col numero', async () => {
@@ -273,10 +368,33 @@ describe('assonometria sghemba: la cella non e un rombo', () => {
         expect(avviso).toBeDefined();
         expect(avviso!.symptom).toContain('1.866');
         expect(avviso!.fix).toContain('makeCellHitArea');
+        // Mai notazione scientifica dentro una scheda: e' il contratto che il
+        // sentinella `num()` del renderer garantisce sugli altri campi, ma
+        // questo numero nasce nel core e li' non passa piu'.
+        //
+        // Su QUESTA matrice l'asserzione non distingue nulla — l'interpolazione
+        // grezza darebbe 1.8660254037844388, che di `e` non ne ha — quindi
+        // serve una matrice il cui rapporto sia abbastanza piccolo da far
+        // scattare l'esponente: 2/9000000 esce `2.2222219753086693e-7` grezzo.
+        // Senza questa seconda sonda, togliere il toFixed resterebbe verde.
+        expect(avviso!.symptom).not.toMatch(/e[+-]\d/);
+        const minuscolo = buildDiagnosis({
+            projection: { type: 'matrix', a: 1, b: 3000, c: -3000, d: 1, elevationStep: 1 }
+        }).warnings.find(w => w.code === 'cell-is-not-a-rhombus');
+        expect(minuscolo).toBeDefined();
+        expect(minuscolo!.symptom, minuscolo!.symptom).not.toMatch(/e[+-]\d/);
 
-        // E NON scatta sul preset diamond, che un rombo ce l'ha davvero.
+        // E NON scatta sul preset diamond, che quella forma ce l'ha davvero.
         expect(buildDiagnosis({ projection: DIAMOND }).warnings.map(w => w.code))
             .not.toContain('cell-is-not-a-rhombus');
+
+        // Ne' su una spec MATRIX che soddisfa le due relazioni. Senza questa
+        // sonda, sostituire `!isRhombus(p)` con `!diamante` — la variabile su
+        // `spec.type`, gia' in scope due righe sopra — lascerebbe l'intera
+        // suite verde, che e' precisamente l'errore che il JSDoc di isRhombus
+        // dichiara di voler evitare.
+        expect(buildDiagnosis({ projection: { type: 'matrix', a: 48, b: 24, c: -48, d: 24, elevationStep: 24 } })
+            .warnings.map(w => w.code)).not.toContain('cell-is-not-a-rhombus');
     });
 });
 
