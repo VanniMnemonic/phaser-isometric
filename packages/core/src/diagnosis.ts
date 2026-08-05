@@ -1,4 +1,4 @@
-import { createProjection, tileSizeOf } from './projection';
+import { createProjection, isRhombus, tileSizeOf } from './projection';
 import { createDepthAssigner } from './depth';
 import { worldBounds } from './bounds';
 import type { Projection } from './projection';
@@ -274,6 +274,27 @@ export function buildDiagnosis(input: DiagnosisInput): Diagnosis {
             code: 'fractional-tile-centres',
             symptom: `tile centres land on half pixels (a=${p.a} d=${p.d})`,
             fix: 'use an even tileWidth and tileHeight, for example 96x48'
+        });
+    }
+
+    // Sta accanto a 'fractional-tile-centres' perche' e' l'altra domanda sulla
+    // FORMA della cella, e prima di ogni avviso sulla quota. Non puo' scattare
+    // su uno spec 'diamond': il preset soddisfa entrambe le relazioni per
+    // costruzione.
+    if (!isRhombus(p)) {
+        // Il rapporto fra l'area del rombo che `tileSizeOf` farebbe costruire
+        // (2|a*d|) e l'area vera della cella (|det|). Vale esattamente 1 su un
+        // rombo. Il numero, e non solo il fatto, perche' e' quello che dice
+        // quanto sarebbe sbagliata la hit area: a 15 gradi di orientamento vale
+        // 1.866, cioe' 2cos^2(15 gradi).
+        const eccessoDelRombo = Math.abs(2 * p.a * p.d) / Math.abs(p.det);
+        warnings.push({
+            code: 'cell-is-not-a-rhombus',
+            symptom:
+                `cells are skewed parallelograms, not rhombuses (a=${p.a} b=${p.b} c=${p.c} d=${p.d}), ` +
+                `so a diamond hit area would cover ${eccessoDelRombo} times the cell's own area`,
+            fix: 'give game objects their hit area with makeCellHitArea(target), not makeDiamondHitArea(target): ' +
+                'tileSizeOf reads only a and d, so a rhombus derived from it is the wrong SHAPE, not just the wrong size'
         });
     }
 

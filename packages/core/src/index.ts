@@ -9,7 +9,7 @@
  * cell's top face.
  */
 
-export { createProjection, tileSizeOf } from './projection';
+export { createProjection, isRhombus, tileSizeOf } from './projection';
 export type { Projection } from './projection';
 
 export { createDepthAssigner, DEFAULT_BANDS, DEFAULT_LAYOUT } from './depth';
@@ -24,8 +24,8 @@ export type { PickOptions } from './picking';
 export { cullBounds } from './culling';
 export type { CullPadding } from './culling';
 
-export { diamondPoints } from './hit-area';
-export type { DiamondPointsOptions } from './hit-area';
+export { cellPoints, diamondPoints } from './hit-area';
+export type { CellPointsOptions, DiamondPointsOptions } from './hit-area';
 
 export { buildDebugModel } from './debug-model';
 export type { DebugModel, DebugModelOptions, DebugLabel } from './debug-model';

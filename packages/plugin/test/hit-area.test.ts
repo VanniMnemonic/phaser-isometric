@@ -2,15 +2,38 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { bootGame, destroyGame, forgetScenePlugin, Phaser } from './helper';
 import { ISO_PLUGIN_KEY, isoScenePlugin } from '../src/plugin';
-import { createHeightGrid, tileSizeOf } from '@iso-internal/core';
+import { buildDiagnosis, createHeightGrid, IsoConfigError, tileSizeOf } from '@iso-internal/core';
 import type { IsoSprite } from '../src/iso-sprite';
 
 const DIAMOND = { type: 'diamond', tileWidth: 96, tileHeight: 48 } as const;
+
+/**
+ * L'assonometria del pannello di un editor vettoriale: elevazione 30 gradi,
+ * orientamento 15, scala cubo 144. Le celle NON sono rombi — sono
+ * parallelogrammi sghembi, e i quattro vertici veri cadono esattamente sui
+ * lati del rombo che `tileSizeOf` farebbe costruire, che e' il motivo per cui
+ * la forma sbagliata non si vede finche' non si contano i click.
+ */
+const E = (30 * Math.PI) / 180;
+const O = (15 * Math.PI) / 180;
+const SCALA = 144;
+const SGHEMBA = {
+    type: 'matrix',
+    a: SCALA * Math.cos(O),
+    b: SCALA * Math.sin(O) * Math.sin(E),
+    c: -SCALA * Math.sin(O),
+    d: SCALA * Math.cos(O) * Math.sin(E),
+    elevationStep: SCALA * Math.cos(E)
+} as const;
 
 afterEach(() => { destroyGame(); forgetScenePlugin(ISO_PLUGIN_KEY); });
 
 function conIso(): Promise<Phaser.Scene> {
     return bootGame({ plugins: { scene: [isoScenePlugin({ projection: DIAMOND })] } });
+}
+
+function conAssonometria(): Promise<Phaser.Scene> {
+    return bootGame({ plugins: { scene: [isoScenePlugin({ projection: SGHEMBA })] } });
 }
 
 describe('makeDiamondHitArea', () => {
@@ -111,6 +134,149 @@ describe('makeDiamondHitArea', () => {
         const scene = await conIso();
         const s = scene.add.isoSprite(0, 0, '__DEFAULT');
         expect(scene.iso.makeDiamondHitArea(s)).toBe(s);
+    });
+});
+
+describe('assonometria sghemba: la cella non e un rombo', () => {
+    // Il buco che questa suite aveva: nessuno dei suoi file istanziava una
+    // spec `matrix`, quindi il comportamento GIUSTO e quello SBAGLIATO
+    // passavano entrambi invariati. Le celle di questa proiezione hanno area
+    // |det| = 10368 px2 mentre il rombo di `tileSizeOf` ne varrebbe 19346,95:
+    // il rapporto e' 2cos^2(15 gradi) = 1,866.
+
+    /** Il punto MONDO nello spazio frame-locale che la hitAreaCallback riceve
+     *  davvero: origine display gia' sommata. */
+    function frameLocale(s: IsoSprite, worldX: number, worldY: number): { x: number; y: number } {
+        return { x: (worldX - s.x) + s.displayOriginX, y: (worldY - s.y) + s.displayOriginY };
+    }
+
+    it('makeDiamondHitArea RIFIUTA di dedurre la misura da una matrice sghemba', async () => {
+        const scene = await conAssonometria();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        // Il difetto originale era esattamente questo silenzio: la chiamata
+        // riusciva e installava la forma sbagliata.
+        expect(() => scene.iso.makeDiamondHitArea(s)).toThrow(IsoConfigError);
+        expect(() => scene.iso.makeDiamondHitArea(s)).toThrow(/makeCellHitArea/);
+
+        // E non ha toccato il bersaglio: rifiuto prima di mutare.
+        expect(s.input).toBeNull();
+    });
+
+    it('rifiuta anche quando UNA sola delle due misure e omessa', async () => {
+        const scene = await conAssonometria();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        // Meta' misura passata significa meta' misura DEDOTTA, che e' il caso
+        // che la guardia esiste per prendere.
+        expect(() => scene.iso.makeDiamondHitArea(s, { tileWidth: 200 })).toThrow(IsoConfigError);
+        expect(() => scene.iso.makeDiamondHitArea(s, { tileHeight: 100 })).toThrow(IsoConfigError);
+    });
+
+    it('ACCETTA un rombo esplicito: chi passa entrambe le misure ha dichiarato la forma', async () => {
+        // Zero falsi positivi: su questo percorso `tileSizeOf` non viene
+        // nemmeno consultato, quindi non c'e' niente di disonesto da fermare.
+        const scene = await conAssonometria();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        expect(() => scene.iso.makeDiamondHitArea(s, { tileWidth: 200, tileHeight: 100 })).not.toThrow();
+        expect(s.input!.hitArea).toBeInstanceOf(Phaser.Geom.Polygon);
+    });
+
+    it('makeDiamondHitArea resta intatta sul preset diamond', async () => {
+        // La guardia non deve costare nulla a chi non e' mai stato colpito dal
+        // difetto: un rombo e' un rombo e continua a funzionare come prima.
+        const scene = await conIso();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        expect(() => scene.iso.makeDiamondHitArea(s)).not.toThrow();
+        expect(s.input!.hitArea).toBeInstanceOf(Phaser.Geom.Polygon);
+    });
+
+    it('makeCellHitArea installa il parallelogramma vero, di area |det|', async () => {
+        const scene = await conAssonometria();
+        const s = scene.add.isoSprite(0, 0, '__DEFAULT');
+
+        scene.iso.makeCellHitArea(s);
+
+        const poly = s.input!.hitArea as Phaser.Geom.Polygon;
+        expect(poly).toBeInstanceOf(Phaser.Geom.Polygon);
+        expect(s.input!.hitAreaCallback).toBe(Phaser.Geom.Polygon.Contains);
+
+        // Area col laccio, calcolata qui: e' la grandezza che separa il
+        // parallelogramma vero dal rombo (10368 contro 19346,95).
+        const p = poly.points;
+        let somma = 0;
+        for (let i = 0; i < p.length; i++) {
+            const q = p[(i + 1) % p.length]!;
+            somma += p[i]!.x * q.y - q.x * p[i]!.y;
+        }
+        expect(Math.abs(somma) / 2).toBeCloseTo(Math.abs(scene.iso.projection.det), 6);
+        expect(Math.abs(somma) / 2).toBeCloseTo(10368, 6);
+    });
+
+    it('le hit area di celle vicine TASSELLANO: nessun punto e rivendicato due volte', async () => {
+        // La proprieta' che interessa davvero all'utente, misurata invece che
+        // argomentata. Con il rombo di `tileSizeOf` questa stessa griglia di
+        // sonde trova migliaia di punti contesi (l'86,6% dell'area di ogni
+        // cella e' rivendicata da DUE hit area); col parallelogramma vero deve
+        // essere esattamente zero.
+        const scene = await conAssonometria();
+
+        const celle: Array<{ gx: number; gy: number; s: IsoSprite }> = [];
+        for (let gx = -1; gx <= 1; gx++) {
+            for (let gy = -1; gy <= 1; gy++) {
+                const s = scene.add.isoSprite(gx, gy, '__DEFAULT').setCell(gx, gy, 0, scene.iso.bands.floor);
+                scene.iso.makeCellHitArea(s);
+                celle.push({ gx, gy, s });
+            }
+        }
+
+        // Sonde su tutta l'estensione della cella centrale, con un margine: e'
+        // la zona in cui i vicini possono sovrapporsi.
+        const proj = scene.iso.projection;
+        const semiLarghezza = Math.abs(proj.a) + Math.abs(proj.c);
+        const semiAltezza = Math.abs(proj.b) + Math.abs(proj.d);
+
+        let contesi = 0;
+        let rivendicatiUnaVolta = 0;
+        const PASSI = 60;
+        for (let i = 0; i <= PASSI; i++) {
+            for (let j = 0; j <= PASSI; j++) {
+                const wx = -semiLarghezza + (2 * semiLarghezza * i) / PASSI;
+                const wy = -semiAltezza + (2 * semiAltezza * j) / PASSI;
+                let quante = 0;
+                for (const { s } of celle) {
+                    const loc = frameLocale(s, wx, wy);
+                    if (Phaser.Geom.Polygon.Contains(s.input!.hitArea as Phaser.Geom.Polygon, loc.x, loc.y)) {
+                        quante++;
+                    }
+                }
+                if (quante > 1) contesi++;
+                if (quante === 1) rivendicatiUnaVolta++;
+            }
+        }
+
+        expect(contesi).toBe(0);
+        // Non vacuo: una misura che non trova niente non prova niente finche'
+        // non le si e' visto trovare qualcosa. Con 61x61 sonde su un'area di
+        // 3x3 celle, la maggioranza schiacciante deve cadere dentro UNA cella.
+        expect(rivendicatiUnaVolta).toBeGreaterThan(3000);
+    });
+
+    it('diagnose avvisa che la cella non e un rombo, col numero', async () => {
+        // L'oracolo che esiste per rispondere "la mia configurazione regge?"
+        // deve nominare proprio questo, o l'utente lo scopre solo dai click.
+        const d = buildDiagnosis({ projection: SGHEMBA });
+        const avviso = d.warnings.find(w => w.code === 'cell-is-not-a-rhombus');
+
+        expect(avviso).toBeDefined();
+        expect(avviso!.symptom).toContain('1.866');
+        expect(avviso!.fix).toContain('makeCellHitArea');
+
+        // E NON scatta sul preset diamond, che un rombo ce l'ha davvero.
+        expect(buildDiagnosis({ projection: DIAMOND }).warnings.map(w => w.code))
+            .not.toContain('cell-is-not-a-rhombus');
     });
 });
 

@@ -78,9 +78,10 @@ class Level extends Phaser.Scene {
                 const tile = this.add.isoSprite(gx, gy, 'tile');
                 tile.setCell(gx, gy, z, this.iso.bands.floor);
                 // The default hit area is a rectangle over the whole frame,
-                // which on a diamond over-covers by roughly double and steals
-                // clicks from its neighbours.
-                this.iso.makeDiamondHitArea(tile);
+                // which over-covers a cell by roughly double and steals clicks
+                // from its neighbours. This installs the cell's real shape,
+                // whatever the projection is.
+                this.iso.makeCellHitArea(tile);
             }
         }
 
@@ -184,6 +185,17 @@ A projection is built from one of two specs:
 ```
 
 The diamond preset sets `a = tileWidth/2`, `b = tileHeight/2`, `c = -tileWidth/2`, `d = tileHeight/2`, and `elevationStep` defaults to `tileHeight/2` (to `0` for a raw matrix). A matrix whose determinant is zero is rejected at construction.
+
+The `matrix` form is not an escape hatch — it is a **general axonometry**, and it is exact. Any elevation and any orientation can be written down, which is what a vector editor's isometric-grid panel produces when it is set to something other than the usual 45°. For elevation `e`, orientation `o` and cube scale `S`:
+
+```ts
+{ type: 'matrix',
+  a: S * Math.cos(o),               b: S * Math.sin(o) * Math.sin(e),
+  c: -S * Math.sin(o),              d: S * Math.cos(o) * Math.sin(e),
+  elevationStep: S * Math.cos(e) }
+```
+
+Two things follow, and the second one bites. **The one thing that cannot be expressed is roll**: elevation only ever moves a sprite along screen `-y` (there is no `z` term in `screenX`), so a view rotated in the picture plane is out of reach. And **when the orientation is not 45°, a cell stops being a rhombus** and becomes a skewed parallelogram: `a !== -c`, or `b !== d`, or both. Use `isRhombus(projection)` to ask. Everything in the package is generic over the matrix — `project`, `unproject`, `cornersOf`, `pick`, `worldBounds`, `cullBounds`, the debug overlay — with one exception that has its own guard: a hit area, see "Cell hit areas".
 
 ```
 screenX = a*gx + c*gy + origin.x
@@ -339,14 +351,16 @@ this.iso.stopFollow();
 
 `cameraBounds(gridWidth, gridHeight, opts?)` uses the isometric extent — `(W+H)*tileWidth/2` wide, starting at a **negative** x because cell `(0, H-1)` is the leftmost vertex. It throws on a non-positive grid, which is what a call made before the tilemap finished loading looks like.
 
-### Diamond hit areas
+### Cell hit areas
 
 ```ts
-this.iso.makeDiamondHitArea(tile);                              // tile size from the projection
-this.iso.makeDiamondHitArea(tile, { tileWidth: 96, tileHeight: 48 });
+this.iso.makeCellHitArea(tile);                                 // the cell's real shape — use this one
+this.iso.makeDiamondHitArea(tile, { tileWidth: 96, tileHeight: 48 });   // an explicit rhombus of your own
 ```
 
-Phaser's default hit area is a rectangle over the whole frame, which on a diamond over-covers by roughly a factor of two and steals clicks from the neighbours. This installs a `Phaser.Geom.Polygon` with `Polygon.Contains` as the callback — the same half-open rule `pick()` matches. Re-calling it on an already-interactive object mutates the hit area in place, on purpose (see gotcha 11).
+Phaser's default hit area is a rectangle over the whole frame, which over-covers a cell by roughly a factor of two and steals clicks from the neighbours. Both of these install a `Phaser.Geom.Polygon` with `Polygon.Contains` as the callback — the same half-open rule `pick()` matches. Re-calling either on an already-interactive object mutates the hit area in place, on purpose (see gotcha 11).
+
+`makeCellHitArea` builds the cell's real shape from the projection, so it is right under the diamond preset (where it produces exactly what `makeDiamondHitArea` does) and right under any other axonometry too. `makeDiamondHitArea` builds a rhombus, and **throws** rather than derive its size from a projection whose cells are not rhombuses: `tileSizeOf` reads only `a` and `d`, never `b` or `c`, so the rhombus it would describe is the wrong shape and not merely the wrong size. Pass both `tileWidth` and `tileHeight` and it is allowed on any projection — that is a deliberate choice of shape, not a silent derivation.
 
 ### The debug overlay
 
@@ -408,7 +422,7 @@ It prints one card: the matrix and its determinant, how far the matrix is from s
 
 The command is **inside this package**, so it is by construction the version you installed — there is no second artifact that can drift from it. `--json` gives the same facts as data. Add `--strict` to make warnings exit non-zero for CI; without it a warning is printed and the exit code stays 0.
 
-What it reports as a **warning** is a real configuration that will surprise you later: tile centres landing on half pixels, an `elevationStep` of 0 (which a raw `matrix` spec defaults to, so elevation silently does nothing), a near-singular matrix, a grid reaching past the row the depth layout was validated for. What it reports as an **error** is a configuration the constructors reject outright, and it names the correction:
+What it reports as a **warning** is a real configuration that will surprise you later: tile centres landing on half pixels, cells that are skewed parallelograms rather than rhombuses (with the factor by which a diamond hit area would over-cover them), an `elevationStep` of 0 (which a raw `matrix` spec defaults to, so elevation silently does nothing), a near-singular matrix, a grid reaching past the row the depth layout was validated for. What it reports as an **error** is a configuration the constructors reject outright, and it names the correction:
 
 ```sh
 $ npx phaser-isometric diagnose --matrix 1,1,1,1
@@ -439,7 +453,8 @@ Run `npx phaser-isometric help` for every flag.
 | `setHeights` | `(HeightSource \| null) => this` | The source `pick()` reads; `heights` is the getter for it |
 | `pick` | `(worldX, worldY, { minElevation?, maxElevation? }?) => Cell \| null` | `null` when no heights were set |
 | `cull` | `({ above, below, sides }) => GridRect` | Inclusive, conservative |
-| `makeDiamondHitArea` | `(target, { tileWidth?, tileHeight? }?) => target` | Defaults to the projection's tile size |
+| `makeCellHitArea` | `(target) => target` | The cell's real shape under this projection; correct on any axonometry |
+| `makeDiamondHitArea` | `(target, { tileWidth?, tileHeight? }?) => target` | A rhombus; defaults to the projection's tile size, and throws rather than default it from a non-rhombus projection |
 | `snapshot` | `() => IsoSnapshot` | Serialisable; never throws |
 | `isLive` | `boolean` | True between `boot()` and `destroy()` |
 | `graphicsScene` | `Phaser.Scene` | The Scene this plugin is attached to; throws `IsoUsageError` once the Scene is gone (e.g. after shutdown). For the debug overlay and similar tooling that needs the Scene itself, not just `this.iso` |
@@ -479,7 +494,7 @@ Run `npx phaser-isometric help` for every flag.
 
 `createProjection`, `createDepthAssigner`, `createHeightGrid`, `pick`, `cullBounds`, `worldBounds`, `contentBounds`, `diamondPoints`, `tileSizeOf`, `DEFAULT_BANDS`, `DEFAULT_LAYOUT`, `IsoConfigError`.
 
-From the plugin entry only: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyDiamondHitArea`, `IsoUsageError`. From `phaser-isometric/core` only: `buildDebugModel`, with its `DebugModel`, `DebugModelOptions` and `DebugLabel` types — the Phaser-free model behind the overlay, for a debug view of your own.
+From the plugin entry only: `isoScenePlugin`, `IsoPlugin`, `IsoSprite`, `ISO_PLUGIN_KEY`, `viewOf`, `applyCellHitArea`, `applyDiamondHitArea`, `IsoUsageError`. From `phaser-isometric/core` only: `buildDebugModel`, with its `DebugModel`, `DebugModelOptions` and `DebugLabel` types — the Phaser-free model behind the overlay, for a debug view of your own.
 
 The two bounds functions answer different questions, and the list above is the only place they appear:
 
@@ -510,7 +525,7 @@ The two bounds functions answer different questions, and the list above is the o
 
 10. **A Scene plugin is constructed once per Scene, including Phaser's hidden `__SYSTEM` Scene** — N+1 times for N Scenes. Constructors must be cheap and idempotent; that hidden Scene also shows up in a display-list walk, so filter it out.
 
-11. **Never `removeInteractive()` then `setInteractive()` to replace a hit area** (Phaser behaviour). `removeInteractive` only queues the object for removal, so the `setInteractive` one line later is skipped, and on the next game step the flush clears the *new* `InteractiveObject` — leaving the object not interactive at all. Mutate `input.hitArea` and `input.hitAreaCallback` in place. `makeDiamondHitArea` already does.
+11. **Never `removeInteractive()` then `setInteractive()` to replace a hit area** (Phaser behaviour). `removeInteractive` only queues the object for removal, so the `setInteractive` one line later is skipped, and on the next game step the flush clears the *new* `InteractiveObject` — leaving the object not interactive at all. Mutate `input.hitArea` and `input.hitAreaCallback` in place. `makeCellHitArea` and `makeDiamondHitArea` already do.
 
 12. **`camera.setBounds(0, 0, map.widthInPixels, map.heightInPixels)` is wrong on an isometric map.** Phaser computes those with the orthogonal formula. Use `iso.cameraBounds(...)`.
 
@@ -521,3 +536,5 @@ The two bounds functions answer different questions, and the list above is the o
 15. **`null` is not `0` in a height source.** `null` is the abyss — no ground. `0` is valid, walkable ground. `if (!h)` treats them the same and is the standard way to make holes appear where the floor is.
 
 16. **A fractional `gx`/`gy` throws when a depth key is computed.** An actor halfway between two cells would break the row-dominates-band ordering, so round grid coordinates before placing. Screen-space smoothing belongs on the camera or on the sprite's own tween, not in the cell.
+
+17. **Off 45°, a cell is not a rhombus, so a diamond hit area is the wrong SHAPE.** On a `matrix` spec with an orientation other than 45°, the cell is a skewed parallelogram whose four vertices sit exactly on the edges of the rhombus `tileSizeOf` would describe — so that rhombus over-covers by `2cos²θ` (1.866× at 15°) and takes 43% of its neighbours' clicks, while the debug overlay draws the correct shape and the screen contradicts itself. Reach for `makeCellHitArea`; `makeDiamondHitArea` now throws rather than derive a size that does not exist, and `diagnose` reports `cell-is-not-a-rhombus`. Depth ordering is unaffected for sprites no wider than one cell, and `pick()` was never affected.

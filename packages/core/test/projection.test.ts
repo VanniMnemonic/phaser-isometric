@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createProjection, tileSizeOf } from '../src/projection';
+import { createProjection, isRhombus, tileSizeOf } from '../src/projection';
 import { IsoConfigError } from '../src/errors';
 
 describe('createProjection', () => {
@@ -286,5 +286,43 @@ describe('tileSizeOf', () => {
         // quei due campi non deve costruire un Projection completo solo per
         // chiamare questa funzione.
         expect(tileSizeOf({ a: 10, d: 5 })).toEqual({ tileWidth: 20, tileHeight: 10 });
+    });
+});
+
+describe('isRhombus', () => {
+    it('e vero per il preset diamond, a qualunque misura di tile', () => {
+        for (const [tw, th] of [[96, 48], [64, 32], [128, 64], [100, 37]] as const) {
+            expect(isRhombus(createProjection({ type: 'diamond', tileWidth: tw, tileHeight: th })), `${tw}x${th}`)
+                .toBe(true);
+        }
+    });
+
+    it('e vero per una spec matrix che SODDISFA le due relazioni', () => {
+        // La domanda e' sulla matrice, non su `spec.type`: una matrice scritta
+        // a mano che rispetta a = -c e b = d E' un rombo, e trattarla come
+        // sghemba negherebbe una hit area corretta a chi non usa il preset.
+        expect(isRhombus(createProjection({ type: 'matrix', a: 48, b: 24, c: -48, d: 24 }))).toBe(true);
+    });
+
+    it('e falso sull assonometria a 30 gradi di elevazione e 15 di orientamento', () => {
+        const e = (30 * Math.PI) / 180;
+        const o = (15 * Math.PI) / 180;
+        const S = 144;
+        expect(isRhombus(createProjection({
+            type: 'matrix',
+            a: S * Math.cos(o),
+            b: S * Math.sin(o) * Math.sin(e),
+            c: -S * Math.sin(o),
+            d: S * Math.cos(o) * Math.sin(e),
+            elevationStep: S * Math.cos(e)
+        }))).toBe(false);
+    });
+
+    it('vuole ENTRAMBE le relazioni: una sola non basta', () => {
+        // Due sonde speculari. Senza di esse un `||` al posto di un `&&`
+        // passerebbe il test precedente per meta' delle matrici sghembe, e la
+        // guardia lascerebbe passare in silenzio proprio i casi intermedi.
+        expect(isRhombus({ a: 48, b: 24, c: -48, d: 30 }), 'a = -c ma b != d').toBe(false);
+        expect(isRhombus({ a: 48, b: 24, c: -60, d: 24 }), 'b = d ma a != -c').toBe(false);
     });
 });

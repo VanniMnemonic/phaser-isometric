@@ -17,8 +17,12 @@ export interface PickOptions {
  *
  * DIRECTION — this is where intuition gets it wrong. For a fixed screen
  * point, the candidate at elevation z satisfies
- *     gx + gy = 2 * (sy - oy + z*e) / th
- * so gx+gy GROWS with z: a taller candidate sits FARTHER FORWARD, not
+ *     b*gx + d*gy = sy - oy + z*e
+ * (which on the `'diamond'` preset, where b = d = th/2, is the more familiar
+ * `gx + gy = 2 * (sy - oy + z*e) / th`), so gx+gy GROWS with z whenever b and
+ * d are positive — as they are for any orientation between 0° and 90°, the
+ * range in which the grid axes both run away from the viewer. A taller
+ * candidate therefore sits FARTHER FORWARD, not
  * farther back. The pixel shows whichever surface was drawn last, i.e. the
  * one with the largest gx+gy, i.e. the one with the LARGEST z. That is why z
  * is iterated in DECREASING order, returning the first valid candidate.
@@ -42,19 +46,22 @@ export interface PickOptions {
  * 127 pixels on this scene's grid, a real, everyday-reachable rate.
  *
  * SCOPE OF THAT GUARANTEE: `pick()` itself is projection-agnostic — this same
- * rounding runs for a custom `'matrix'` spec too — but the "matches
- * `Polygon.Contains`" justification above is specifically about the
- * `'diamond'` preset. `makeDiamondHitArea` always builds a diamond shape from
- * `tileWidth`/`tileHeight` alone (via `tileSizeOf`), regardless of what `b`
- * and `c` actually are; on a custom matrix whose unit square maps to a
- * genuinely skewed parallelogram (not the diamond preset's `a=tw/2, b=th/2,
- * c=-tw/2, d=th/2` relation), that hit area is the wrong SHAPE already, not
- * just wrong at the tie — the boundary-agreement property this section
- * documents is not claimed to hold there. Measure-zero in practice (most
- * consumers use the diamond preset, and a custom matrix with its own
- * intentionally-mismatched hit area is already an edge case), but worth
- * saying plainly rather than leaving this section's "every point belongs to
- * exactly one cell" read as a general fact about `Projection`.
+ * rounding runs for a custom `'matrix'` spec too, and it was measured exact
+ * there (0 disagreements over 26,668 sampled points on a 30°/15° axonometry,
+ * against an independent point-in-polygon on the cell's real vertices). What
+ * is specific to the `'diamond'` preset is the "matches `Polygon.Contains`"
+ * justification above, and only because of which HIT AREA is installed.
+ *
+ * Use `makeCellHitArea` (`cellPoints`) on a non-rhombus projection and the
+ * boundary agreement holds by construction, because those hit areas are the
+ * cells. Use `makeDiamondHitArea` and it does not: `tileSizeOf` reads only `a`
+ * and `d`, never `b` or `c`, so the rhombus it describes is the wrong SHAPE
+ * and not merely wrong at the tie. That is not a measure-zero edge: the cell
+ * is inscribed in that rhombus with all four vertices exactly on its edges, so
+ * the rhombus over-covers by `2cos²θ` — 1.866× at a 15° orientation — and 43%
+ * of clicks land on a neighbour. `IsoPlugin#makeDiamondHitArea` now refuses to
+ * derive its size from such a projection rather than let this happen silently;
+ * `buildDiagnosis` reports it as `cell-is-not-a-rhombus`.
  *
  * DECLARED LIMIT: finds only TOP faces. The vertical side of a column is not
  * pickable — that would need a volumetric model, which the one-elevation-
